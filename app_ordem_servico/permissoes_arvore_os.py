@@ -153,7 +153,13 @@ PERMISSOES_ARVORE_OS: tuple[dict[str, Any], ...] = (
             _modulo(
                 "Envio e revisão",
                 "fotos_os_geral",
-                ("visualizar", "enviar"),
+                (
+                    "visualizar",
+                    "enviar",
+                    "gerar_pdf",
+                    "baixar",
+                    "marcar_enviado",
+                ),
             ),
         ],
     ),

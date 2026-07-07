@@ -2538,7 +2538,6 @@ def _usuario_pode_atribuir_mecanico(usuario: dict[str, Any] | None) -> bool:
         "agendamentos_",
         "pre_orcamentos_",
         "ordem_os_",
-        "fotos_os_",
         "requisicoes_",
         "estoque_",
         "cadastros_",
@@ -2841,6 +2840,65 @@ def _usuario_pode_reativar_os_lista(usuario: dict[str, Any] | None) -> bool:
 
 def _usuario_pode_excluir_os_cancelada(usuario: dict[str, Any] | None) -> bool:
     return _usuario_pode_acao_lista_os(usuario, "lista_os_geral_excluir")
+
+
+def _usuario_pode_ver_fotos_os(usuario: dict[str, Any] | None) -> bool:
+    if _usuario_e_mecanico(usuario):
+        if not usuario or not _usuario_acesso_restrito(usuario):
+            return True
+        return modulo_tem_alguma_permissao(
+            _permissoes_granulares_usuario(usuario),
+            ("fotos_os_geral_enviar", "fotos_os_geral_visualizar"),
+        )
+    if not _usuario_pode_ver_todas_os(usuario):
+        return False
+    if not _usuario_modulo_visivel(usuario, "fotos_os"):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return modulo_tem_alguma_permissao(
+        _permissoes_granulares_usuario(usuario),
+        ("fotos_os_geral_visualizar",),
+    )
+
+
+def _usuario_pode_acao_fotos_os(
+    usuario: dict[str, Any] | None,
+    *chaves: str,
+) -> bool:
+    if _usuario_e_mecanico(usuario):
+        if not usuario or not _usuario_acesso_restrito(usuario):
+            return True
+        return modulo_tem_alguma_permissao(
+            _permissoes_granulares_usuario(usuario),
+            chaves,
+        )
+    if not _usuario_pode_ver_fotos_os(usuario):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return modulo_tem_alguma_permissao(
+        _permissoes_granulares_usuario(usuario),
+        chaves,
+    )
+
+
+def _usuario_pode_enviar_fotos_os_mecanico(usuario: dict[str, Any] | None) -> bool:
+    if not _usuario_e_mecanico(usuario):
+        return False
+    return _usuario_pode_acao_fotos_os(usuario, "fotos_os_geral_enviar")
+
+
+def _usuario_pode_gerar_pdf_fotos_os(usuario: dict[str, Any] | None) -> bool:
+    return _usuario_pode_acao_fotos_os(usuario, "fotos_os_geral_gerar_pdf")
+
+
+def _usuario_pode_baixar_fotos_os(usuario: dict[str, Any] | None) -> bool:
+    return _usuario_pode_acao_fotos_os(usuario, "fotos_os_geral_baixar")
+
+
+def _usuario_pode_marcar_enviado_fotos_os(usuario: dict[str, Any] | None) -> bool:
+    return _usuario_pode_acao_fotos_os(usuario, "fotos_os_geral_marcar_enviado")
 
 
 def _enriquecer_info_lista_os(
@@ -5932,6 +5990,9 @@ def api_os_fotos_enviar(numero_os: int):
             "sucesso": False,
             "mensagem": "Apenas mecânicos podem enviar fotos da O.S.",
         }), 403
+    negado = _negar_sem_permissao(usuario, "fotos_os_geral_enviar")
+    if negado:
+        return negado
     payload = request.get_json(silent=True) or {}
     fotos = payload.get("fotos")
     if not isinstance(fotos, list):
@@ -5949,6 +6010,12 @@ def api_os_fotos_enviar(numero_os: int):
                 max_bytes_por_foto=int(lim.get("max_bytes_por_foto") or 10485760),
             )
             conn.commit()
+        _registrar_acao_rastreio(
+            usuario,
+            "Fotos O.S.",
+            "Enviar fotos ao responsável",
+            f"O.S. nº {numero_os} — {resultado.get('total_fotos', len(fotos))} foto(s)",
+        )
         return jsonify({"sucesso": True, **resultado, "mensagem": "Fotos enviadas ao responsável."})
     except ValueError as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400
@@ -6026,7 +6093,8 @@ def api_os_pre_requisicao_pular(numero_os: int):
 
 @app.route("/api/fotos-os/pendentes/contagem")
 def api_fotos_os_pendentes_contagem():
-    if not _usuario_pode_atribuir_mecanico(_usuario_logado()):
+    usuario = _usuario_logado()
+    if not _usuario_pode_ver_fotos_os(usuario):
         return jsonify({"sucesso": True, "total": 0})
     if not DATABASE_PATH.is_file():
         return jsonify({"sucesso": False, "mensagem": "Banco não encontrado."}), 500
@@ -6042,15 +6110,26 @@ def api_fotos_os_pendentes_contagem():
 @app.route("/api/fotos-os/pendentes")
 def api_fotos_os_pendentes_lista():
     usuario = _usuario_logado()
-    if not _usuario_pode_atribuir_mecanico(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Sem permissão."}), 403
+    negado = _negar_sem_modulo(usuario, "fotos_os")
+    if negado:
+        return negado
+    negado = _negar_sem_permissao(usuario, "fotos_os_geral_visualizar")
+    if negado:
+        return negado
     if not DATABASE_PATH.is_file():
         return jsonify({"sucesso": False, "mensagem": "Banco não encontrado."}), 500
     try:
         init_ordens_servico()
         with conexao_banco() as conn:
             itens = listar_os_fotos_pendentes(conn)
-        return jsonify({"sucesso": True, "itens": itens, "total": len(itens)})
+        return jsonify({
+            "sucesso": True,
+            "itens": itens,
+            "total": len(itens),
+            "pode_gerar_pdf": _usuario_pode_gerar_pdf_fotos_os(usuario),
+            "pode_baixar": _usuario_pode_baixar_fotos_os(usuario),
+            "pode_marcar_enviado": _usuario_pode_marcar_enviado_fotos_os(usuario),
+        })
     except sqlite3.Error as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 500
 
@@ -6058,8 +6137,12 @@ def api_fotos_os_pendentes_lista():
 @app.route("/api/os/<int:numero_os>/fotos/pendentes")
 def api_os_fotos_pendentes_detalhe(numero_os: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_atribuir_mecanico(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Sem permissão."}), 403
+    negado = _negar_sem_modulo(usuario, "fotos_os")
+    if negado:
+        return negado
+    negado = _negar_sem_permissao(usuario, "fotos_os_geral_visualizar")
+    if negado:
+        return negado
     if not DATABASE_PATH.is_file():
         return jsonify({"sucesso": False, "mensagem": "Banco não encontrado."}), 500
     try:
@@ -6079,8 +6162,12 @@ def api_os_fotos_pendentes_detalhe(numero_os: int):
 @app.route("/api/os/<int:numero_os>/fotos/pdf")
 def api_os_fotos_pdf(numero_os: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_atribuir_mecanico(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Sem permissão."}), 403
+    negado = _negar_sem_modulo(usuario, "fotos_os")
+    if negado:
+        return negado
+    negado = _negar_sem_permissao(usuario, "fotos_os_geral_gerar_pdf")
+    if negado:
+        return negado
     if not DATABASE_PATH.is_file():
         return jsonify({"sucesso": False, "mensagem": "Banco não encontrado."}), 500
     try:
@@ -6093,6 +6180,12 @@ def api_os_fotos_pdf(numero_os: int):
             logo = _obter_logo_empresa(conn_pr)
             fotos = [str(f["foto"]) for f in dados.get("fotos") or []]
             pdf_bytes = gerar_pdf_fotos_os(dados, fotos, logo_dataurl=logo, empresa=empresa)
+        _registrar_acao_rastreio(
+            usuario,
+            "Fotos O.S.",
+            "Gerar PDF de fotos",
+            f"O.S. nº {numero_os}",
+        )
     except sqlite3.Error as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 500
     except Exception as exc:
@@ -6109,8 +6202,12 @@ def api_os_fotos_pdf(numero_os: int):
 @app.route("/api/os/<int:numero_os>/fotos/zip")
 def api_os_fotos_zip(numero_os: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_atribuir_mecanico(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Sem permissão."}), 403
+    negado = _negar_sem_modulo(usuario, "fotos_os")
+    if negado:
+        return negado
+    negado = _negar_sem_permissao(usuario, "fotos_os_geral_baixar")
+    if negado:
+        return negado
     if not DATABASE_PATH.is_file():
         return jsonify({"sucesso": False, "mensagem": "Banco não encontrado."}), 500
     try:
@@ -6127,6 +6224,12 @@ def api_os_fotos_zip(numero_os: int):
             for nome_arq, conteudo in arquivos:
                 zf.writestr(nome_arq, conteudo)
         buf.seek(0)
+        _registrar_acao_rastreio(
+            usuario,
+            "Fotos O.S.",
+            "Baixar fotos (ZIP)",
+            f"O.S. nº {numero_os}",
+        )
     except sqlite3.Error as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 500
     pasta = nome_pasta_cliente(dados.get("cliente_nome") or "", numero_os)
@@ -6141,8 +6244,12 @@ def api_os_fotos_zip(numero_os: int):
 @app.route("/api/os/<int:numero_os>/fotos/marcar-enviado", methods=["POST"])
 def api_os_fotos_marcar_enviado(numero_os: int):
     usuario = _usuario_logado()
-    if not usuario or not _usuario_pode_atribuir_mecanico(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Sem permissão."}), 403
+    negado = _negar_sem_modulo(usuario, "fotos_os")
+    if negado:
+        return negado
+    negado = _negar_sem_permissao(usuario, "fotos_os_geral_marcar_enviado")
+    if negado:
+        return negado
     if not DATABASE_PATH.is_file():
         return jsonify({"sucesso": False, "mensagem": "Banco não encontrado."}), 500
     try:
@@ -6160,6 +6267,12 @@ def api_os_fotos_marcar_enviado(numero_os: int):
                 "sucesso": False,
                 "mensagem": "Não há fotos pendentes nesta O.S.",
             }), 404
+        _registrar_acao_rastreio(
+            usuario,
+            "Fotos O.S.",
+            "Marcar fotos enviadas ao cliente",
+            f"O.S. nº {numero_os}",
+        )
         return jsonify({
             "sucesso": True,
             "mensagem": "Fotos marcadas como enviadas ao cliente.",

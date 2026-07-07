@@ -6289,7 +6289,7 @@
         }
 
         function aplicarFotosOsCfgUi() {
-            if (PERMISSOES_OS.pode_atribuir_mecanico) {
+            if (fotosPodeVisualizar()) {
                 atualizarBadgeFotosOsPendentes();
             }
             document.querySelectorAll(".perfil-fotos-painel").forEach(function (painel) {
@@ -6458,6 +6458,9 @@
         let podePausarOs = false;
         let podeRetomarOs = false;
         let podeAtribuirMecanicoLista = false;
+        let podeGerarPdfFotosOs = false;
+        let podeBaixarFotosOs = false;
+        let podeMarcarEnviadoFotosOs = false;
         let podeCancelarOs = false;
         let podeReativarOs = false;
         let podeExcluirOsCancelada = false;
@@ -6599,6 +6602,27 @@
             if (blocoPausadas) blocoPausadas.classList.toggle("d-none", !podeVer);
             if (blocoCanceladas) blocoCanceladas.classList.toggle("d-none", !podeVer);
             if (blocoSalvas) blocoSalvas.classList.toggle("d-none", !podeVer);
+        }
+
+        function fotosPodeVisualizar() {
+            return osTemPermissao("fotos_os_geral_visualizar");
+        }
+        function fotosPodeEnviar() {
+            return osTemPermissao("fotos_os_geral_enviar");
+        }
+        function fotosPodeGerarPdf() {
+            return osTemPermissao("fotos_os_geral_gerar_pdf");
+        }
+        function fotosPodeBaixar() {
+            return osTemPermissao("fotos_os_geral_baixar");
+        }
+        function fotosPodeMarcarEnviado() {
+            return osTemPermissao("fotos_os_geral_marcar_enviado");
+        }
+        function aplicarPermissoesFotosOsUi() {
+            if (fotosPodeVisualizar()) {
+                atualizarBadgeFotosOsPendentes();
+            }
         }
 
         function osPodeDevolverMecanico(os) {
@@ -7634,7 +7658,8 @@
 
         function podeEnviarFotosOsPerfil() {
             return PERMISSOES_OS.perfil === "mecanico" &&
-                USUARIO_SESSAO && String(perfilAbertoId) === String(USUARIO_SESSAO.id);
+                USUARIO_SESSAO && String(perfilAbertoId) === String(USUARIO_SESSAO.id) &&
+                fotosPodeEnviar();
         }
 
         function podeEditarReqInlinePerfil() {
@@ -10446,6 +10471,10 @@
         }
 
         async function enviarFotosOsPerfil(numeroOs, painel, fotos, aoOk) {
+            if (!fotosPodeEnviar()) {
+                osToast("Sem permissão para enviar fotos.", "info");
+                return;
+            }
             const fb = painel ? painel.querySelector(".perfil-fotos-feedback") : null;
             if (!fotos || !fotos.length) {
                 osToast("Adicione ao menos uma foto.", "aviso");
@@ -10489,7 +10518,7 @@
 
         async function atualizarBadgeFotosOsPendentes(totalOpt) {
             const badge = document.getElementById("badge-fotos-os-pendentes");
-            if (!badge || !PERMISSOES_OS.pode_atribuir_mecanico) {
+            if (!badge || !fotosPodeVisualizar()) {
                 if (badge) badge.classList.add("d-none");
                 return;
             }
@@ -10513,7 +10542,10 @@
 
         async function carregarFotosOsPendentes() {
             const lista = document.getElementById("lista-fotos-os-pendentes");
-            if (!lista || !PERMISSOES_OS.pode_atribuir_mecanico) return;
+            if (!lista || !fotosPodeVisualizar()) {
+                if (lista) lista.innerHTML = '<p class="text-muted small mb-0">Sem permissão.</p>';
+                return;
+            }
             lista.innerHTML = '<p class="text-muted small mb-0">Carregando...</p>';
             try {
                 const resp = await fetch("/api/fotos-os/pendentes", FETCH_OPTS);
@@ -10522,6 +10554,9 @@
                     lista.innerHTML = '<p class="text-muted small mb-0">Sem permissão.</p>';
                     return;
                 }
+                podeGerarPdfFotosOs = !!data.pode_gerar_pdf;
+                podeBaixarFotosOs = !!data.pode_baixar;
+                podeMarcarEnviadoFotosOs = !!data.pode_marcar_enviado;
                 atualizarBadgeFotosOsPendentes(data.total);
                 const itens = data.itens || [];
                 if (!itens.length) {
@@ -10535,6 +10570,22 @@
                     card.setAttribute("data-numero", os.numero_os);
                     const emb = os.embarcacao_nome ? escHtml(os.embarcacao_nome) : "—";
                     const mot = os.motor ? " · " + escHtml(os.motor) : "";
+                    let acoesHtml = '<div class="d-flex flex-wrap gap-2">';
+                    if (podeGerarPdfFotosOs) {
+                        acoesHtml += '<a class="btn btn-sm btn-outline-danger" href="/api/os/' + os.numero_os +
+                            '/fotos/pdf" target="_blank" rel="noopener">' +
+                            '<i class="bi bi-file-earmark-pdf"></i> PDF</a>';
+                    }
+                    if (podeBaixarFotosOs) {
+                        acoesHtml += '<a class="btn btn-sm btn-outline-secondary" href="/api/os/' + os.numero_os +
+                            '/fotos/zip" download>' +
+                            '<i class="bi bi-folder2-open"></i> Baixar fotos</a>';
+                    }
+                    if (podeMarcarEnviadoFotosOs) {
+                        acoesHtml += '<button type="button" class="btn btn-sm btn-success btn-fotos-os-marcar-enviado" data-numero="' +
+                            os.numero_os + '"><i class="bi bi-check2-circle"></i> Marcar enviadas</button>';
+                    }
+                    acoesHtml += "</div>";
                     card.innerHTML =
                         '<div class="d-flex flex-wrap justify-content-between gap-2 mb-2">' +
                         '<div><strong>O.S. ' + os.numero_os + "</strong> — " + escHtml(os.cliente_nome || "—") +
@@ -10542,15 +10593,7 @@
                         '<div class="small text-muted">Mecânico: ' + escHtml(os.mecanico_nome || "—") +
                         " · " + (os.total_fotos || 0) + " foto(s)</div></div></div>" +
                         '<div class="fotos-os-miniaturas d-flex flex-wrap gap-2 mb-2"></div>' +
-                        '<div class="d-flex flex-wrap gap-2">' +
-                        '<a class="btn btn-sm btn-outline-danger" href="/api/os/' + os.numero_os +
-                        '/fotos/pdf" target="_blank" rel="noopener">' +
-                        '<i class="bi bi-file-earmark-pdf"></i> PDF</a>' +
-                        '<a class="btn btn-sm btn-outline-secondary" href="/api/os/' + os.numero_os +
-                        '/fotos/zip" download>' +
-                        '<i class="bi bi-folder2-open"></i> Baixar fotos</a>' +
-                        '<button type="button" class="btn btn-sm btn-success btn-fotos-os-marcar-enviado" data-numero="' +
-                        os.numero_os + '"><i class="bi bi-check2-circle"></i> Marcar enviadas</button></div>';
+                        acoesHtml;
                     lista.appendChild(card);
                     carregarMiniaturasFotosOs(os.numero_os, card.querySelector(".fotos-os-miniaturas"));
                 });
@@ -10588,6 +10631,10 @@
         }
 
         async function marcarFotosOsEnviadas(numeroOs) {
+            if (!fotosPodeMarcarEnviado() || !podeMarcarEnviadoFotosOs) {
+                osToast("Sem permissão para marcar fotos como enviadas.", "info");
+                return;
+            }
             const ok = await osConfirm(
                 "Marcar as fotos da O.S. nº " + numeroOs + " como enviadas ao cliente?"
             );
@@ -10716,6 +10763,9 @@
             try {
                 if (typeof aplicarPermissoesListaOsUi === "function") aplicarPermissoesListaOsUi();
             } catch (err) { console.error("perm lista-os:", err); }
+            try {
+                if (typeof aplicarPermissoesFotosOsUi === "function") aplicarPermissoesFotosOsUi();
+            } catch (err) { console.error("perm fotos-os:", err); }
             const navPre = document.getElementById("nav-mod-pre-orcamentos");
             if (navPre && !mecanico) {
                 const mostrarPre = PERMISSOES_OS.perfil === "admin" || osModuloVisivel("pre_orcamentos");
@@ -10751,7 +10801,9 @@
                     : PERMISSOES_OS.pode_atribuir_mecanico;
                 navFotosOs.classList.toggle("d-none", !showFotos);
             }
-            if (PERMISSOES_OS.pode_atribuir_mecanico || osModuloVisivel("fotos_os")) {
+            if (PERMISSOES_OS.controle_abas_ativo
+                    ? fotosPodeVisualizar()
+                    : PERMISSOES_OS.pode_atribuir_mecanico) {
                 atualizarBadgeFotosOsPendentes();
             }
             const btnReqInterna = document.getElementById("btn-req-nova-interna");
@@ -14581,6 +14633,7 @@
         const navModFotosOs = document.getElementById("nav-mod-fotos-os");
         if (navModFotosOs) {
             navModFotosOs.addEventListener("shown.bs.tab", function () {
+                aplicarPermissoesFotosOsUi();
                 carregarFotosOsPendentes();
             });
         }
@@ -17906,7 +17959,7 @@
 
         setInterval(carregarNotificacoes, 25000);
         setInterval(function () {
-            if (PERMISSOES_OS.pode_atribuir_mecanico) atualizarBadgeFotosOsPendentes();
+            if (fotosPodeVisualizar()) atualizarBadgeFotosOsPendentes();
         }, 45000);
 
         /* ---------- Salvar O.S. (API /salvar_os) ---------- */
