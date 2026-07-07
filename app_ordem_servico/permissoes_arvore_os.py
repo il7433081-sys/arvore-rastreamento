@@ -18,6 +18,7 @@ _ROTULOS_ACAO: dict[str, str] = {
     "excluir": "Excluir",
     "gerar_pdf": "Gerar PDF",
     "gerar_os": "Gerar O.S.",
+    "atualizar_precos": "Atualizar preços do catálogo",
     "finalizar": "Finalizar serviço",
     "pausar": "Marcar pausa",
     "retomar": "Retomar mecânico",
@@ -64,6 +65,35 @@ def _modulo_agendamentos() -> dict[str, Any]:
     }
 
 
+def _modulo_pre_orcamentos_lista() -> dict[str, Any]:
+    return {
+        "tipo": "modulo",
+        "rotulo": "Pré-Orçamentos",
+        "filhos": [
+            _acao("Visualizar lista e detalhes", "pre_orcamentos_geral_visualizar"),
+            _acao("Criar novo", "pre_orcamentos_geral_criar"),
+            _acao("Editar", "pre_orcamentos_geral_editar"),
+            _acao("Excluir", "pre_orcamentos_geral_excluir"),
+            _acao("Imprimir PDF", "pre_orcamentos_geral_gerar_pdf"),
+            _acao("Converter em O.S.", "pre_orcamentos_geral_gerar_os"),
+        ],
+    }
+
+
+def _modulo_kits_motor() -> dict[str, Any]:
+    return {
+        "tipo": "modulo",
+        "rotulo": "Kits de Motor",
+        "filhos": [
+            _acao("Visualizar kits", "pre_orcamentos_kits_visualizar"),
+            _acao("Criar kit", "pre_orcamentos_kits_criar"),
+            _acao("Editar kit", "pre_orcamentos_kits_editar"),
+            _acao("Excluir kit", "pre_orcamentos_kits_excluir"),
+            _acao("Atualizar preços do catálogo", "pre_orcamentos_kits_atualizar_precos"),
+        ],
+    }
+
+
 def _aba(rotulo: str, modulos: list[dict[str, Any]]) -> dict[str, Any]:
     return {"tipo": "aba", "rotulo": rotulo, "filhos": modulos}
 
@@ -78,11 +108,8 @@ PERMISSOES_ARVORE_OS: tuple[dict[str, Any], ...] = (
     _aba(
         "Pré-Orçamentos",
         [
-            _modulo(
-                "Configurador",
-                "pre_orcamentos_geral",
-                ("visualizar", "criar", "editar", "excluir", "gerar_pdf", "gerar_os"),
-            ),
+            _modulo_pre_orcamentos_lista(),
+            _modulo_kits_motor(),
         ],
     ),
     _aba(

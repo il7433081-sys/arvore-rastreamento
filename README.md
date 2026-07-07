@@ -16,6 +16,16 @@ Guarda checkpoints dos arquivos ligados a permissões granulares e rastreio de a
 | `app_ordem_servico/app.py` | APIs, checagens e registro de rastreio |
 | `app_ordem_servico/templates/index.html` | UI de permissões e guards no frontend |
 
+## Manual em PDF
+
+Arquivo: **`MANUAL_REPOSITORIO_PERMISSOES_E_RASTREIOS.pdf`** (nesta pasta).
+
+Para regerar após alterações no fluxo:
+
+```powershell
+python gerar_manual_repositorio.py
+```
+
 ## Salvar um checkpoint (após testar e aprovar)
 
 No PowerShell, na pasta deste repositório:

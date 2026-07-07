@@ -10654,6 +10654,9 @@
             try {
                 if (typeof aplicarPermissoesAgendamentosUi === "function") aplicarPermissoesAgendamentosUi();
             } catch (err) { console.error("perm agendamentos:", err); }
+            try {
+                if (typeof aplicarPermissoesPreOrcamentosUi === "function") aplicarPermissoesPreOrcamentosUi();
+            } catch (err) { console.error("perm pre-orcamentos:", err); }
             const navPre = document.getElementById("nav-mod-pre-orcamentos");
             if (navPre && !mecanico) {
                 const mostrarPre = PERMISSOES_OS.perfil === "admin" || osModuloVisivel("pre_orcamentos");
@@ -18085,6 +18088,107 @@
         let poKitEditItens = [];
         let modalPoKit = null;
 
+        function poPodeVisualizar() {
+            return osTemPermissao("pre_orcamentos_geral_visualizar");
+        }
+        function poPodeCriar() {
+            return osTemPermissao("pre_orcamentos_geral_criar");
+        }
+        function poPodeEditar() {
+            return osTemPermissao("pre_orcamentos_geral_editar");
+        }
+        function poPodeExcluir() {
+            return osTemPermissao("pre_orcamentos_geral_excluir");
+        }
+        function poPodeGerarPdf() {
+            return osTemPermissao("pre_orcamentos_geral_gerar_pdf");
+        }
+        function poPodeGerarOs() {
+            return osTemPermissao("pre_orcamentos_geral_gerar_os");
+        }
+        function poKitPodeVisualizar() {
+            return osTemPermissao("pre_orcamentos_kits_visualizar");
+        }
+        function poKitPodeCriar() {
+            return osTemPermissao("pre_orcamentos_kits_criar");
+        }
+        function poKitPodeEditar() {
+            return osTemPermissao("pre_orcamentos_kits_editar");
+        }
+        function poKitPodeExcluir() {
+            return osTemPermissao("pre_orcamentos_kits_excluir");
+        }
+        function poKitPodeAtualizarPrecos() {
+            return osTemPermissao("pre_orcamentos_kits_atualizar_precos")
+                || poPodeCriar() || poPodeEditar()
+                || poKitPodeCriar() || poKitPodeEditar();
+        }
+        function poPodeBuscarKitsModal() {
+            return poKitPodeVisualizar() || poPodeCriar() || poPodeEditar();
+        }
+        function poPodeSalvarComoKit() {
+            return poKitPodeCriar() || poKitPodeEditar();
+        }
+
+        function aplicarPermissoesPreOrcamentosUi() {
+            const subPre = document.getElementById("po-sub-pre");
+            const subKits = document.getElementById("po-sub-kits");
+            const mostrarPre = poPodeVisualizar();
+            const mostrarKits = poKitPodeVisualizar();
+            if (subPre && subPre.parentElement) {
+                subPre.parentElement.classList.toggle("d-none", !mostrarPre);
+            }
+            if (subKits && subKits.parentElement) {
+                subKits.parentElement.classList.toggle("d-none", !mostrarKits);
+            }
+            const painelPre = document.getElementById("po-painel-pre");
+            const painelKits = document.getElementById("po-painel-kits");
+            const kitsAtivo = painelKits && !painelKits.classList.contains("d-none");
+            if (kitsAtivo && !mostrarKits && mostrarPre) {
+                poAlternarSubPainel("po-painel-pre");
+            } else if (!kitsAtivo && !mostrarPre && mostrarKits) {
+                poAlternarSubPainel("po-painel-kits");
+            } else if (kitsAtivo && !mostrarKits) {
+                poAlternarSubPainel("po-painel-pre");
+            }
+            const btnNovo = document.getElementById("po-btn-novo");
+            const btnEd = document.getElementById("po-btn-editar");
+            const btnPdf = document.getElementById("po-btn-pdf");
+            const btnConv = document.getElementById("po-btn-converter");
+            const btnEx = document.getElementById("po-btn-excluir");
+            const acoesPre = document.querySelector("#po-painel-pre .po-acoes");
+            if (btnNovo) btnNovo.classList.toggle("d-none", !poPodeCriar());
+            if (btnEd) btnEd.classList.toggle("d-none", !poPodeEditar());
+            if (btnPdf) btnPdf.classList.toggle("d-none", !poPodeGerarPdf());
+            if (btnConv) btnConv.classList.toggle("d-none", !poPodeGerarOs());
+            if (btnEx) btnEx.classList.toggle("d-none", !poPodeExcluir());
+            if (acoesPre) {
+                const algum = poPodeEditar() || poPodeGerarPdf() || poPodeGerarOs() || poPodeExcluir();
+                acoesPre.classList.toggle("d-none", !algum);
+            }
+            const btnKitNovo = document.getElementById("po-kit-btn-novo");
+            const btnKitEd = document.getElementById("po-kit-btn-editar");
+            const btnKitEx = document.getElementById("po-kit-btn-excluir");
+            const acoesKit = document.querySelector("#po-painel-kits .po-acoes");
+            if (btnKitNovo) btnKitNovo.classList.toggle("d-none", !poKitPodeCriar());
+            if (btnKitEd) btnKitEd.classList.toggle("d-none", !poKitPodeEditar());
+            if (btnKitEx) btnKitEx.classList.toggle("d-none", !poKitPodeExcluir());
+            if (acoesKit) {
+                const algumKit = poKitPodeEditar() || poKitPodeExcluir();
+                acoesKit.classList.toggle("d-none", !algumKit);
+            }
+            const btnBuscaMotor = document.getElementById("po-modal-btn-buscar-motor");
+            const btnSalvarKit = document.getElementById("po-modal-btn-salvar-kit");
+            const btnPrecosPo = document.getElementById("po-modal-btn-precos-catalogo");
+            const btnPrecosKit = document.getElementById("po-kit-btn-precos-catalogo");
+            if (btnBuscaMotor) btnBuscaMotor.classList.toggle("d-none", !poPodeBuscarKitsModal());
+            if (btnSalvarKit) btnSalvarKit.classList.toggle("d-none", !poPodeSalvarComoKit());
+            if (btnPrecosPo) btnPrecosPo.classList.toggle("d-none", !poKitPodeAtualizarPrecos());
+            if (btnPrecosKit) btnPrecosKit.classList.toggle("d-none", !poKitPodeAtualizarPrecos());
+            poAtualizarBotoes();
+            poAtualizarBotoesKit();
+        }
+
         function poObterModal() {
             const el = document.getElementById("modal-pre-orcamento");
             if (!el || typeof bootstrap === "undefined") return null;
@@ -18112,10 +18216,10 @@
             const btnPdf = document.getElementById("po-btn-pdf");
             const btnConv = document.getElementById("po-btn-converter");
             const btnEx = document.getElementById("po-btn-excluir");
-            if (btnEd) btnEd.disabled = !tem || convertido;
-            if (btnPdf) btnPdf.disabled = !tem;
-            if (btnConv) btnConv.disabled = !tem || convertido;
-            if (btnEx) btnEx.disabled = !tem;
+            if (btnEd) btnEd.disabled = !tem || convertido || !poPodeEditar();
+            if (btnPdf) btnPdf.disabled = !tem || !poPodeGerarPdf();
+            if (btnConv) btnConv.disabled = !tem || convertido || !poPodeGerarOs();
+            if (btnEx) btnEx.disabled = !tem || !poPodeExcluir();
         }
 
         function poRecalcularTotalItens(itens) {
@@ -18295,6 +18399,10 @@
         }
 
         async function poAtualizarPrecosCatalogo(itens, renderCallback) {
+            if (!poKitPodeAtualizarPrecos()) {
+                osToast("Sem permissão para atualizar preços do catálogo.", "aviso");
+                return null;
+            }
             if (!itens.length) {
                 osToast("Adicione itens antes de buscar preços.", "aviso");
                 return null;
@@ -18385,6 +18493,7 @@
         }
 
         async function poSugerirKits() {
+            if (!poPodeBuscarKitsModal()) return;
             const campo = document.getElementById("po-modal-busca-motor");
             const termo = (campo && campo.value || "").trim();
             if (!termo) {
@@ -18409,6 +18518,10 @@
         }
 
         async function poBuscarKits() {
+            if (!poPodeBuscarKitsModal()) {
+                osToast("Sem permissão para buscar kits.", "aviso");
+                return;
+            }
             const campo = document.getElementById("po-modal-busca-motor");
             const termo = (campo && campo.value || "").trim();
             if (!termo) { osToast("Digite o modelo do motor.", "aviso"); return; }
@@ -18522,6 +18635,14 @@
         }
 
         function poAbrirModal(modo, preId) {
+            if (modo === "novo" && !poPodeCriar()) {
+                osToast("Sem permissão para criar pré-orçamento.", "aviso");
+                return;
+            }
+            if (modo === "editar" && !poPodeEditar()) {
+                osToast("Sem permissão para editar pré-orçamento.", "aviso");
+                return;
+            }
             const tit = document.getElementById("modal-pre-orcamento-titulo");
             if (tit) tit.textContent = modo === "editar" ? "Editar pré-orçamento" : "Novo pré-orçamento";
             poLimparModal();
@@ -18555,6 +18676,14 @@
 
         async function poSalvarModal() {
             const idEd = document.getElementById("po-modal-id").value;
+            if (idEd && !poPodeEditar()) {
+                osToast("Sem permissão para editar.", "aviso");
+                return;
+            }
+            if (!idEd && !poPodeCriar()) {
+                osToast("Sem permissão para criar.", "aviso");
+                return;
+            }
             const clienteNome = document.getElementById("po-modal-cliente-nome").textContent;
             const clienteId = document.getElementById("po-modal-cliente-id").value;
             const motor = document.getElementById("po-modal-motor-texto").value;
@@ -18600,6 +18729,10 @@
         }
 
         async function poSalvarComoKit() {
+            if (!poPodeSalvarComoKit()) {
+                osToast("Sem permissão para salvar kit.", "aviso");
+                return;
+            }
             const motor = document.getElementById("po-modal-motor-texto").value.trim();
             if (!motor) { osToast("Informe o modelo do motor para o kit.", "aviso"); return; }
             if (!poModalItens.length) { osToast("Adicione itens antes de salvar o kit.", "aviso"); return; }
@@ -18647,6 +18780,8 @@
         }
 
         function poAlternarSubPainel(painelId) {
+            if (painelId === "po-painel-kits" && !poKitPodeVisualizar()) return;
+            if (painelId === "po-painel-pre" && !poPodeVisualizar()) return;
             const pre = document.getElementById("po-painel-pre");
             const kits = document.getElementById("po-painel-kits");
             if (pre) pre.classList.toggle("d-none", painelId !== "po-painel-pre");
@@ -18663,8 +18798,8 @@
             const tem = !!poKitSelecionadoId;
             const btnEd = document.getElementById("po-kit-btn-editar");
             const btnEx = document.getElementById("po-kit-btn-excluir");
-            if (btnEd) btnEd.disabled = !tem;
-            if (btnEx) btnEx.disabled = !tem;
+            if (btnEd) btnEd.disabled = !tem || !poKitPodeEditar();
+            if (btnEx) btnEx.disabled = !tem || !poKitPodeExcluir();
         }
 
         function poRenderizarItensKitModal() {
@@ -18672,6 +18807,14 @@
         }
 
         function poAbrirModalKit(modo, kitId) {
+            if (modo === "novo" && !poKitPodeCriar()) {
+                osToast("Sem permissão para criar kit.", "aviso");
+                return;
+            }
+            if (modo === "editar" && !poKitPodeEditar()) {
+                osToast("Sem permissão para editar kit.", "aviso");
+                return;
+            }
             const tit = document.getElementById("modal-po-kit-titulo");
             document.getElementById("po-kit-modal-id").value = "";
             document.getElementById("po-kit-modal-modelo").value = "";
@@ -18712,8 +18855,16 @@
         }
 
         async function poSalvarKitModal() {
-            const modelo = document.getElementById("po-kit-modal-modelo").value.trim();
             const kitId = document.getElementById("po-kit-modal-id").value;
+            if (kitId && !poKitPodeEditar()) {
+                osToast("Sem permissão para editar kit.", "aviso");
+                return;
+            }
+            if (!kitId && !poKitPodeCriar()) {
+                osToast("Sem permissão para criar kit.", "aviso");
+                return;
+            }
+            const modelo = document.getElementById("po-kit-modal-modelo").value.trim();
             if (!modelo) { osToast("Informe o modelo do motor.", "aviso"); return; }
             if (!poKitEditItens.length) { osToast("Adicione ao menos um item ao kit.", "aviso"); return; }
             const payload = {
@@ -18799,6 +18950,10 @@
 
         async function poExcluirKitSelecionado() {
             if (!poKitSelecionadoId) return;
+            if (!poKitPodeExcluir()) {
+                osToast("Sem permissão para excluir kit.", "aviso");
+                return;
+            }
             const kit = poKitListaCache.find(function (k) { return parseInt(k.id, 10) === parseInt(poKitSelecionadoId, 10); });
             const nome = kit ? kit.modelo_motor : "este kit";
             if (!confirm("Excluir o kit \"" + nome + "\"?")) return;
@@ -18876,6 +19031,10 @@
 
         async function poConverterOs() {
             if (!poSelecionadoId) return;
+            if (!poPodeGerarOs()) {
+                osToast("Sem permissão para converter em O.S.", "aviso");
+                return;
+            }
             const ok = await osConfirm("Converter este pré-orçamento em O.S. oficial? Os dados serão enviados automaticamente.");
             if (!ok) return;
             try {
@@ -18904,6 +19063,10 @@
 
         async function poExcluirSelecionado() {
             if (!poSelecionadoId) return;
+            if (!poPodeExcluir()) {
+                osToast("Sem permissão para excluir.", "aviso");
+                return;
+            }
             const pre = poListaCache.find(function (p) { return String(p.id) === String(poSelecionadoId); });
             const msg = pre && pre.status === "convertido_os"
                 ? "Excluir este pré-orçamento já convertido da lista?"
@@ -18942,6 +19105,10 @@
                 if (poSelecionadoId) poAbrirModal("editar", poSelecionadoId);
             });
             if (btnPdf) btnPdf.addEventListener("click", function () {
+                if (!poPodeGerarPdf()) {
+                    osToast("Sem permissão para imprimir PDF.", "aviso");
+                    return;
+                }
                 if (poSelecionadoId) window.open("/pdf_pre_orcamento/" + poSelecionadoId, "_blank");
             });
             if (btnConv) btnConv.addEventListener("click", poConverterOs);
@@ -19011,6 +19178,9 @@
             const navPre = document.getElementById("nav-mod-pre-orcamentos");
             if (navPre) {
                 navPre.addEventListener("shown.bs.tab", function () {
+                    if (typeof aplicarPermissoesPreOrcamentosUi === "function") {
+                        aplicarPermissoesPreOrcamentosUi();
+                    }
                     const painelKits = document.getElementById("po-painel-kits");
                     if (painelKits && !painelKits.classList.contains("d-none")) {
                         carregarKitsMotor();

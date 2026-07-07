@@ -2571,6 +2571,9 @@ def _usuario_pode_buscar_catalogo_pre_orcamentos(usuario: dict[str, Any] | None)
         tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_geral_visualizar")
         or tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_geral_criar")
         or tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_geral_editar")
+        or tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_kits_visualizar")
+        or tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_kits_criar")
+        or tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_kits_editar")
     )
 
 
@@ -2583,7 +2586,55 @@ def _usuario_pode_ver_preco_catalogo_pre_orcamentos(usuario: dict[str, Any] | No
     return (
         tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_geral_criar")
         or tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_geral_editar")
+        or tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_kits_atualizar_precos")
+        or tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_kits_criar")
+        or tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_kits_editar")
     )
+
+
+def _usuario_pode_visualizar_kits_pre_orcamento(usuario: dict[str, Any] | None) -> bool:
+    if usuario is None:
+        return not _exigir_login_efetivo()
+    if _usuario_e_admin(usuario):
+        return True
+    gran = _permissoes_granulares_usuario(usuario)
+    return (
+        tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_kits_visualizar")
+        or tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_geral_visualizar")
+        or tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_geral_criar")
+        or tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_geral_editar")
+    )
+
+
+def _usuario_pode_atualizar_precos_pre_orcamento(usuario: dict[str, Any] | None) -> bool:
+    if usuario is None:
+        return not _exigir_login_efetivo()
+    if _usuario_e_admin(usuario):
+        return True
+    gran = _permissoes_granulares_usuario(usuario)
+    return (
+        tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_kits_atualizar_precos")
+        or tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_geral_criar")
+        or tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_geral_editar")
+        or tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_kits_criar")
+        or tem_permissao_pre_orcamentos_explicita(gran, "pre_orcamentos_kits_editar")
+    )
+
+
+def _negar_sem_permissao_kits_visualizar(
+    usuario: dict[str, Any] | None,
+) -> tuple[Any, int] | None:
+    if _usuario_pode_visualizar_kits_pre_orcamento(usuario):
+        return None
+    return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+
+
+def _negar_sem_permissao_atualizar_precos_pre(
+    usuario: dict[str, Any] | None,
+) -> tuple[Any, int] | None:
+    if _usuario_pode_atualizar_precos_pre_orcamento(usuario):
+        return None
+    return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
 
 
 def _usuario_pode_usar_catalogo_pecas(usuario: dict[str, Any] | None) -> bool:
@@ -8052,6 +8103,66 @@ def _registrar_rastreio_agendamento(
     )
 
 
+def _detalhe_rastreio_pre_orcamento(pre: dict[str, Any], *, sufixo: str = "") -> str:
+    partes: list[str] = []
+    numero = str(pre.get("numero") or "").strip()
+    if numero:
+        partes.append(numero)
+    elif pre.get("id"):
+        partes.append(f"#{pre['id']}")
+    cliente = str(pre.get("cliente_nome") or "").strip()
+    if cliente:
+        partes.append(cliente)
+    motor = str(pre.get("motor") or "").strip()
+    if motor:
+        partes.append(motor)
+    if sufixo:
+        partes.append(sufixo)
+    return " · ".join(partes) if partes else "—"
+
+
+def _detalhe_rastreio_kit_motor(kit: dict[str, Any], *, sufixo: str = "") -> str:
+    partes: list[str] = []
+    modelo = str(kit.get("modelo_motor") or "").strip()
+    if modelo:
+        partes.append(modelo)
+    if kit.get("id"):
+        partes.append(f"#{kit['id']}")
+    if sufixo:
+        partes.append(sufixo)
+    return " · ".join(partes) if partes else "—"
+
+
+def _registrar_rastreio_pre_orcamento(
+    usuario: dict[str, Any] | None,
+    subcategoria: str,
+    pre: dict[str, Any],
+    *,
+    sufixo: str = "",
+) -> None:
+    _registrar_acao_rastreio(
+        usuario,
+        "Pré-Orçamentos",
+        subcategoria,
+        _detalhe_rastreio_pre_orcamento(pre, sufixo=sufixo),
+    )
+
+
+def _registrar_rastreio_kit_motor(
+    usuario: dict[str, Any] | None,
+    subcategoria: str,
+    kit: dict[str, Any],
+    *,
+    sufixo: str = "",
+) -> None:
+    _registrar_acao_rastreio(
+        usuario,
+        "Pré-Orçamentos",
+        subcategoria,
+        _detalhe_rastreio_kit_motor(kit, sufixo=sufixo),
+    )
+
+
 @app.route("/api/agendamentos/calendario", methods=["GET"])
 def api_agendamentos_calendario():
     usuario = _usuario_logado()
@@ -8357,7 +8468,7 @@ def api_pre_orcamentos_kits_listar():
     negado = _negar_sem_modulo(usuario, "pre_orcamentos")
     if negado:
         return negado
-    negado = _negar_sem_permissao(usuario, "pre_orcamentos_geral_visualizar")
+    negado = _negar_sem_permissao_kits_visualizar(usuario)
     if negado:
         return negado
     termo = (request.args.get("termo") or request.args.get("q") or "").strip()
@@ -8386,7 +8497,7 @@ def api_pre_orcamentos_kits_obter(kit_id: int):
     negado = _negar_sem_modulo(usuario, "pre_orcamentos")
     if negado:
         return negado
-    negado = _negar_sem_permissao(usuario, "pre_orcamentos_geral_visualizar")
+    negado = _negar_sem_permissao_kits_visualizar(usuario)
     if negado:
         return negado
     try:
@@ -8407,13 +8518,16 @@ def api_pre_orcamentos_kits_excluir(kit_id: int):
     negado = _negar_sem_modulo(usuario, "pre_orcamentos")
     if negado:
         return negado
-    negado = _negar_sem_permissao(usuario, "pre_orcamentos_geral_excluir")
+    negado = _negar_sem_permissao(usuario, "pre_orcamentos_kits_excluir")
     if negado:
         return negado
     try:
         with conexao_pre_orcamentos() as conn:
+            kit = obter_kit_motor(conn, kit_id)
             excluir_kit_motor(conn, kit_id)
             conn.commit()
+        if kit:
+            _registrar_rastreio_kit_motor(usuario, "Excluir kit de motor", kit)
         return jsonify({"sucesso": True, "mensagem": "Kit excluído."})
     except (ValueError, sqlite3.Error) as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400
@@ -8428,7 +8542,7 @@ def api_pre_orcamentos_kits_atualizar_precos():
     negado = _negar_sem_modulo(usuario, "pre_orcamentos")
     if negado:
         return negado
-    negado = _negar_sem_permissao(usuario, "pre_orcamentos_geral_visualizar")
+    negado = _negar_sem_permissao_atualizar_precos_pre(usuario)
     if negado:
         return negado
     if not DATABASE_PRINCIPAL_PATH.is_file():
@@ -8440,6 +8554,12 @@ def api_pre_orcamentos_kits_atualizar_precos():
     try:
         with conexao_principal() as conn:
             atualizados, resumo = atualizar_precos_itens_do_catalogo(conn, itens)
+        _registrar_acao_rastreio(
+            usuario,
+            "Pré-Orçamentos",
+            "Atualizar preços do catálogo",
+            f"{resumo.get('atualizados', 0)} item(ns)",
+        )
         return jsonify({"sucesso": True, "itens": atualizados, "resumo": resumo})
     except (ValueError, sqlite3.Error) as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400
@@ -8458,9 +8578,9 @@ def api_pre_orcamentos_kits_salvar():
         kit_id = payload.get("id")
         kit_id_int = int(kit_id) if kit_id not in (None, "", 0) else None
         if kit_id_int:
-            negado = _negar_sem_permissao(usuario, "pre_orcamentos_geral_editar")
+            negado = _negar_sem_permissao(usuario, "pre_orcamentos_kits_editar")
         else:
-            negado = _negar_sem_permissao(usuario, "pre_orcamentos_geral_criar")
+            negado = _negar_sem_permissao(usuario, "pre_orcamentos_kits_criar")
         if negado:
             return negado
         with conexao_pre_orcamentos() as conn:
@@ -8471,6 +8591,9 @@ def api_pre_orcamentos_kits_salvar():
                 preco_base=payload.get("preco_base"),
                 kit_id=kit_id_int,
             )
+            conn.commit()
+        sub = "Alterar kit de motor" if kit_id_int else "Novo kit de motor"
+        _registrar_rastreio_kit_motor(usuario, sub, item)
         return jsonify({"sucesso": True, "kit": item})
     except (ValueError, sqlite3.Error) as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400
@@ -8484,7 +8607,7 @@ def api_pre_orcamentos_kits_importar():
     negado = _negar_sem_modulo(usuario, "pre_orcamentos")
     if negado:
         return negado
-    negado = _negar_sem_permissao(usuario, "pre_orcamentos_geral_criar")
+    negado = _negar_sem_permissao(usuario, "pre_orcamentos_kits_criar")
     if negado:
         return negado
     payload = request.get_json(silent=True) or {}
@@ -8494,6 +8617,17 @@ def api_pre_orcamentos_kits_importar():
     try:
         with conexao_pre_orcamentos() as conn:
             resumo = importar_kits_motor_lote(conn, kits)
+            conn.commit()
+        det = (
+            f"{resumo.get('criados', 0)} criado(s), "
+            f"{resumo.get('atualizados', 0)} atualizado(s)"
+        )
+        _registrar_acao_rastreio(
+            usuario,
+            "Pré-Orçamentos",
+            "Importar kits (lote)",
+            det,
+        )
         return jsonify({"sucesso": True, **resumo})
     except (ValueError, sqlite3.Error) as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400
@@ -8553,6 +8687,8 @@ def api_pre_orcamentos_criar():
                 kit_motor_id=kit_id_int,
                 observacoes=str(payload.get("observacoes") or ""),
             )
+            conn.commit()
+        _registrar_rastreio_pre_orcamento(usuario, "Novo pré-orçamento", item)
         return jsonify({"sucesso": True, "pre_orcamento": item})
     except (ValueError, sqlite3.Error) as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400
@@ -8563,6 +8699,12 @@ def api_pre_orcamentos_obter(pre_id: int):
     usuario = _usuario_logado()
     if not usuario:
         return jsonify({"sucesso": False, "mensagem": "Faça login."}), 401
+    negado = _negar_sem_modulo(usuario, "pre_orcamentos")
+    if negado:
+        return negado
+    negado = _negar_sem_permissao(usuario, "pre_orcamentos_geral_visualizar")
+    if negado:
+        return negado
     try:
         with conexao_pre_orcamentos() as conn:
             item = obter_pre_orcamento(conn, pre_id)
@@ -8605,6 +8747,8 @@ def api_pre_orcamentos_atualizar(pre_id: int):
                 motor_id=motor_id_int,
                 observacoes=payload.get("observacoes"),
             )
+            conn.commit()
+        _registrar_rastreio_pre_orcamento(usuario, "Alterar pré-orçamento", item)
         return jsonify({"sucesso": True, "pre_orcamento": item})
     except (ValueError, sqlite3.Error) as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400
@@ -8623,7 +8767,11 @@ def api_pre_orcamentos_excluir(pre_id: int):
         return negado
     try:
         with conexao_pre_orcamentos() as conn:
+            pre = obter_pre_orcamento(conn, pre_id)
             excluir_pre_orcamento(conn, pre_id)
+            conn.commit()
+        if pre:
+            _registrar_rastreio_pre_orcamento(usuario, "Excluir pré-orçamento", pre)
         return jsonify({"sucesso": True, "mensagem": "Pré-orçamento excluído."})
     except (ValueError, sqlite3.Error) as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400
@@ -8762,6 +8910,12 @@ def api_pre_orcamentos_converter_os(pre_id: int):
                 conn_pre, pre_id, numero_os=int(numero_os)
             )
 
+        _registrar_rastreio_pre_orcamento(
+            usuario,
+            "Converter em O.S.",
+            pre_atualizado or pre,
+            sufixo=f"O.S. nº {numero_os}",
+        )
         return jsonify({
             "sucesso": True,
             "numero_os": numero_os,
