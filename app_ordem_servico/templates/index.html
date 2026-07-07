@@ -1249,6 +1249,18 @@
             margin-bottom: 0.35rem;
         }
 
+        .cfg-box-recolhivel.is-collapsed .cfg-box-corpo {
+            display: none;
+        }
+
+        .cfg-box-toggle .bi-chevron-down {
+            transition: transform 0.2s ease;
+        }
+
+        .cfg-box-recolhivel.is-collapsed .cfg-box-toggle .bi-chevron-down {
+            transform: rotate(-90deg);
+        }
+
         .cfg-perm-aba,
         .cfg-perm-modulo {
             display: flex;
@@ -5588,12 +5600,16 @@
                                         <label class="form-check-label" for="cfg-u-telespectador">Telespectador (ver atividade)</label>
                                     </div>
                                 </div>
-                                <div class="col-12 d-none" id="cfg-u-telespectador-alvos-wrap">
+                                <div class="col-12 d-none cfg-box-recolhivel is-collapsed" id="cfg-u-telespectador-alvos-wrap">
                                     <label class="form-label" id="cfg-u-telespectador-alvos-label">
                                         Quem pode acompanhar
                                         <span class="text-muted">(nenhum marcado = todos, exceto admin)</span>
                                     </label>
                                     <div class="d-flex flex-wrap gap-2 mb-2">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary cfg-box-toggle"
+                                                id="btn-cfg-toggle-telespectador-alvos" aria-expanded="false">
+                                            <i class="bi bi-chevron-down me-1"></i> Mostrar/ocultar lista
+                                        </button>
                                         <button type="button" class="btn btn-sm btn-outline-secondary"
                                                 id="btn-cfg-telespectador-marcar-todos">
                                             Marcar todos
@@ -5603,23 +5619,31 @@
                                             Limpar seleção
                                         </button>
                                     </div>
-                                    <div id="cfg-u-telespectador-alvos"
-                                         class="cfg-telespectador-alvos border rounded p-2 bg-dark bg-opacity-25"
-                                         role="group"
-                                         aria-labelledby="cfg-u-telespectador-alvos-label"></div>
+                                    <div class="cfg-box-corpo">
+                                        <div id="cfg-u-telespectador-alvos"
+                                             class="cfg-telespectador-alvos border rounded p-2 bg-dark bg-opacity-25"
+                                             role="group"
+                                             aria-labelledby="cfg-u-telespectador-alvos-label"></div>
+                                    </div>
                                     <p class="small text-muted mb-0 mt-2">
                                         Marque os usuários que este telespectador pode acompanhar no rastreio de atividade.
                                     </p>
                                 </div>
-                                <div class="col-12 d-none" id="cfg-u-permissoes-arvore-wrap">
+                                <div class="col-12 d-none cfg-box-recolhivel is-collapsed" id="cfg-u-permissoes-arvore-wrap">
                                     <p class="small text-muted mb-2">
                                         Marque módulos e ações permitidos. Em <strong>Configurações → Notificações no aparelho</strong>,
                                         use <em>Visualizar</em> (botão «Permitir» na Config) e <em>Receber avisos no aparelho</em>
                                         (barra laranja e avisos do sistema).
                                     </p>
-                                    <div id="cfg-u-permissoes-arvore"
-                                         class="cfg-permissoes-arvore border rounded p-2 bg-dark bg-opacity-25"
-                                         aria-label="Árvore de permissões"></div>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary mb-2 cfg-box-toggle"
+                                            id="btn-cfg-toggle-permissoes-arvore" aria-expanded="false">
+                                        <i class="bi bi-chevron-down me-1"></i> Mostrar/ocultar árvore
+                                    </button>
+                                    <div class="cfg-box-corpo">
+                                        <div id="cfg-u-permissoes-arvore"
+                                             class="cfg-permissoes-arvore border rounded p-2 bg-dark bg-opacity-25"
+                                             aria-label="Árvore de permissões"></div>
+                                    </div>
                                 </div>
                             </div>
                             <div class="d-flex flex-wrap gap-2 mt-3">
@@ -12741,6 +12765,8 @@
         const cfgUTelespectadorWrap = document.getElementById("cfg-u-telespectador-wrap");
         const cfgUTelespectador = document.getElementById("cfg-u-telespectador");
         const cfgUTelespectadorAlvosWrap = document.getElementById("cfg-u-telespectador-alvos-wrap");
+        const btnCfgTogglePermissoesArvore = document.getElementById("btn-cfg-toggle-permissoes-arvore");
+        const btnCfgToggleTelespectadorAlvos = document.getElementById("btn-cfg-toggle-telespectador-alvos");
         let cfgUsuarioSelecionadoId = null;
         let cfgUsuarioEditandoId = null;
         let cfgPodeGerenciarUsuarios = false;
@@ -13027,6 +13053,24 @@
 
         function alternarRecolhivelPermCfg(alvo, corpo, nodeKey) {
             if (!alvo || !corpo) return;
+            const vaiAbrir = corpo.classList.contains("is-collapsed");
+            if (vaiAbrir) {
+                const blocoAtual = alvo.parentElement;
+                const container = blocoAtual ? blocoAtual.parentElement : null;
+                if (container) {
+                    container.querySelectorAll(":scope > .cfg-perm-bloco-aba, :scope > .cfg-perm-bloco-modulo").forEach(function (bloco) {
+                        if (bloco === blocoAtual) return;
+                        const rowIrmao = bloco.querySelector(":scope > .cfg-perm-aba, :scope > .cfg-perm-modulo");
+                        const subIrmao = bloco.querySelector(":scope > .cfg-perm-sub");
+                        if (rowIrmao && subIrmao && !subIrmao.classList.contains("is-collapsed")) {
+                            subIrmao.classList.add("is-collapsed");
+                            rowIrmao.classList.add("is-collapsed");
+                            const chaveIrmao = rowIrmao.getAttribute("data-perm-node");
+                            if (chaveIrmao) cfgPermNosExpandidos.delete(chaveIrmao);
+                        }
+                    });
+                }
+            }
             const recolhido = corpo.classList.toggle("is-collapsed");
             alvo.classList.toggle("is-collapsed", recolhido);
             if (nodeKey) {
@@ -13034,6 +13078,17 @@
                 else cfgPermNosExpandidos.add(nodeKey);
             }
         }
+
+        function vincularToggleCfgBox(btn, wrap) {
+            if (!btn || !wrap) return;
+            btn.addEventListener("click", function () {
+                const recolhido = wrap.classList.toggle("is-collapsed");
+                btn.setAttribute("aria-expanded", recolhido ? "false" : "true");
+            });
+        }
+
+        vincularToggleCfgBox(btnCfgTogglePermissoesArvore, cfgUPermissoesArvoreWrap);
+        vincularToggleCfgBox(btnCfgToggleTelespectadorAlvos, cfgUTelespectadorAlvosWrap);
 
         function sincronizarCheckboxesArvorePermCfg() {
             if (!cfgUPermissoesArvore || !cfgArvorePermissoesDef) return;
