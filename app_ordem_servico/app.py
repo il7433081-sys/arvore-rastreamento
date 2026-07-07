@@ -2293,6 +2293,7 @@ def _flags_configuracao_sessao(usuario: dict[str, Any] | None) -> dict[str, bool
         "pode_gerenciar_usuarios": _usuario_pode_gerenciar_usuarios(usuario),
         "pode_configurar_app": _usuario_pode_configurar_app(usuario),
         "pode_alterar_orientacao_pdf": _usuario_pode_configurar_app(usuario),
+        "pode_ver_proprio_perfil": _usuario_pode_ver_proprio_perfil(usuario),
         "pode_editar_proprio_perfil": _usuario_pode_editar_proprio_perfil(usuario),
         "pode_ver_rastreio_atividade": _usuario_pode_ver_rastreio_atividade(usuario),
         "pode_excluir_rastreio_atividade": _usuario_pode_excluir_rastreio_atividade(usuario),
@@ -2300,7 +2301,52 @@ def _flags_configuracao_sessao(usuario: dict[str, Any] | None) -> dict[str, bool
         "pode_criar_usuarios": _usuario_pode_criar_usuarios(usuario),
         "pode_editar_usuarios": _usuario_pode_editar_usuarios(usuario),
         "pode_excluir_usuarios": _usuario_pode_excluir_usuarios(usuario),
+        "pode_ver_notificacoes_aparelho": _usuario_pode_ver_notificacoes_aparelho_config(usuario),
+        "pode_editar_notificacoes_aparelho": _usuario_pode_editar_notificacoes_aparelho_config(
+            usuario
+        ),
     }
+
+
+def _permissoes_payload_configuracoes(usuario: dict[str, Any] | None) -> dict[str, bool]:
+    flags = _flags_configuracao_sessao(usuario)
+    return {
+        "pode_visualizar_perfil": flags["pode_ver_proprio_perfil"],
+        "pode_editar_perfil": flags["pode_editar_proprio_perfil"],
+        "pode_visualizar_usuarios": flags["pode_gerenciar_usuarios"],
+        "pode_criar_usuarios": flags["pode_criar_usuarios"],
+        "pode_editar_usuarios": flags["pode_editar_usuarios"],
+        "pode_excluir_usuarios": flags["pode_excluir_usuarios"],
+        "pode_visualizar_atividade": flags["pode_ver_rastreio_atividade"],
+        "pode_excluir_atividade": flags["pode_excluir_rastreio_atividade"],
+        "pode_limpar_atividade": flags["pode_limpar_rastreio_atividade"],
+        "pode_visualizar_notificacoes": flags["pode_ver_notificacoes_aparelho"],
+        "pode_configurar_app": flags["pode_configurar_app"],
+    }
+
+
+def _usuario_pode_acessar_modulo_configuracoes(usuario: dict[str, Any] | None) -> bool:
+    if usuario is None:
+        return not _exigir_login_efetivo()
+    if _usuario_e_admin(usuario):
+        return True
+    return (
+        _usuario_pode_ver_proprio_perfil(usuario)
+        or _usuario_pode_gerenciar_usuarios(usuario)
+        or _usuario_pode_ver_rastreio_atividade(usuario)
+        or _usuario_pode_ver_notificacoes_aparelho_config(usuario)
+        or _usuario_pode_configurar_app(usuario)
+    )
+
+
+def _negar_sem_permissao_configuracoes(
+    usuario: dict[str, Any] | None,
+) -> tuple[Any, int] | None:
+    if not usuario:
+        return jsonify({"sucesso": False, "mensagem": "Faça login."}), 401
+    if _usuario_pode_acessar_modulo_configuracoes(usuario):
+        return None
+    return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
 
 
 def _usuario_pode_gerenciar_usuarios(usuario: dict[str, Any] | None) -> bool:
@@ -2350,6 +2396,36 @@ def _usuario_pode_editar_proprio_perfil(usuario: dict[str, Any] | None) -> bool:
     if _usuario_e_admin(usuario):
         return True
     return _usuario_tem_permissao(usuario, "config_perfil_editar")
+
+
+def _usuario_pode_ver_proprio_perfil(usuario: dict[str, Any] | None) -> bool:
+    if not usuario:
+        return False
+    if _usuario_e_admin(usuario):
+        return True
+    return (
+        _usuario_tem_permissao(usuario, "config_perfil_visualizar")
+        or _usuario_pode_editar_proprio_perfil(usuario)
+    )
+
+
+def _usuario_pode_ver_notificacoes_aparelho_config(
+    usuario: dict[str, Any] | None,
+) -> bool:
+    if not usuario:
+        return False
+    if _usuario_e_admin(usuario):
+        return True
+    return (
+        _usuario_tem_permissao(usuario, "config_notificacoes_visualizar")
+        or _usuario_tem_permissao(usuario, "config_notificacoes_receber")
+    )
+
+
+def _usuario_pode_editar_notificacoes_aparelho_config(
+    usuario: dict[str, Any] | None,
+) -> bool:
+    return _usuario_pode_configurar_app(usuario)
 
 
 def _usuario_pode_ver_rastreio_atividade(usuario: dict[str, Any] | None) -> bool:
@@ -4615,6 +4691,10 @@ def api_sandbox_treinamento_limpar():
 
 @app.route("/api/config", methods=["GET"])
 def api_config_get():
+    usuario = _usuario_logado()
+    negado = _negar_sem_permissao_configuracoes(usuario)
+    if negado:
+        return negado
     if not DATABASE_PATH.is_file():
         return jsonify({"sucesso": False, "mensagem": "Banco de dados não encontrado."}), 500
     usuario = _usuario_logado()
@@ -4642,6 +4722,7 @@ def api_config_get():
             "exigir_login_sincronizado_oficina": sync_login,
             "pdf_orientacao": pdf_orientacao,
             **_flags_configuracao_sessao(usuario),
+            "permissoes": _permissoes_payload_configuracoes(usuario),
         })
     except sqlite3.Error as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 500
@@ -4751,6 +4832,12 @@ def api_config_fotos_os_put():
         with conexao_principal() as conn:
             resultado = salvar_fotos_os_config(conn, alteracoes=alteracoes)
             conn.commit()
+        _registrar_acao_rastreio(
+            usuario,
+            "Configurações",
+            "Alterar config. fotos O.S.",
+            f"{len(alteracoes)} campo(s)",
+        )
         return jsonify({"sucesso": True, **resultado})
     except sqlite3.Error as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 500
@@ -4773,6 +4860,12 @@ def api_config_logo_empresa():
                 _salvar_logo_empresa(conn, None)
             else:
                 _salvar_logo_empresa(conn, str(logo or ""))
+        _registrar_acao_rastreio(
+            usuario,
+            "Configurações",
+            "Remover logo da empresa" if remover else "Alterar logo da empresa",
+            "PDFs da oficina",
+        )
         return jsonify({
             "sucesso": True,
             "mensagem": "Logo removida." if remover else "Logo salva.",
@@ -4837,6 +4930,12 @@ def api_config_nav_pos_acao_put():
         with conexao_principal() as conn:
             resultado = salvar_nav_pos_acao(conn, alteracoes=alteracoes)
             conn.commit()
+        _registrar_acao_rastreio(
+            usuario,
+            "Configurações",
+            "Alterar navegação automática",
+            f"{len(alteracoes)} regra(s)",
+        )
         return jsonify({"sucesso": True, **resultado})
     except sqlite3.Error as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 500
@@ -4847,13 +4946,15 @@ def api_config_notificacoes_aparelho_get():
     usuario = _usuario_logado()
     if not usuario:
         return jsonify({"sucesso": False, "mensagem": "Faça login."}), 401
+    if not _usuario_pode_ver_notificacoes_aparelho_config(usuario):
+        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
     try:
         with conexao_principal() as conn:
             cfg = carregar_notificacoes_aparelho(conn)
         return jsonify({
             "sucesso": True,
             **cfg,
-            "pode_editar": _usuario_pode_configurar_app(usuario),
+            "pode_editar": _usuario_pode_editar_notificacoes_aparelho_config(usuario),
         })
     except sqlite3.Error as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 500
@@ -4862,10 +4963,10 @@ def api_config_notificacoes_aparelho_get():
 @app.route("/api/config/notificacoes-aparelho", methods=["PUT"])
 def api_config_notificacoes_aparelho_put():
     usuario = _usuario_logado()
-    if not _usuario_pode_configurar_app(usuario):
+    if not _usuario_pode_editar_notificacoes_aparelho_config(usuario):
         return jsonify({
             "sucesso": False,
-            "mensagem": "Apenas administradores podem alterar esta configuração.",
+            "mensagem": "Sem permissão para alterar notificações do aparelho.",
         }), 403
     payload = request.get_json(silent=True) or {}
     if not DATABASE_PATH.is_file():
@@ -4877,6 +4978,12 @@ def api_config_notificacoes_aparelho_put():
         with conexao_principal() as conn:
             resultado = salvar_notificacoes_aparelho(conn, alteracoes=alteracoes)
             conn.commit()
+        _registrar_acao_rastreio(
+            usuario,
+            "Configurações",
+            "Alterar notificações no aparelho",
+            f"{len(alteracoes)} evento(s)",
+        )
         return jsonify({"sucesso": True, **resultado})
     except sqlite3.Error as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 500
@@ -4901,6 +5008,12 @@ def api_config_lista_os_put():
                 pausas=payload.get("pausas") if "pausas" in payload else None,
             )
             conn.commit()
+        _registrar_acao_rastreio(
+            usuario,
+            "Configurações",
+            "Alterar personalização lista O.S.",
+            "Marcadores e pausas",
+        )
         return jsonify({"sucesso": True, **resultado})
     except sqlite3.Error as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 500
@@ -4982,6 +5095,12 @@ def api_atualizar_meu_perfil():
                 else None,
             )
             atualizado = _buscar_usuario_por_id(conn, int(usuario["id"]))
+        _registrar_acao_rastreio(
+            usuario,
+            "Configurações",
+            "Alterar meu perfil",
+            str(atualizado.get("nome_exibicao") or atualizado.get("usuario") or ""),
+        )
         return jsonify({
             "sucesso": True,
             "mensagem": "Perfil atualizado.",
@@ -5037,6 +5156,12 @@ def api_perfis_criar():
             )
             conn.commit()
             criado = buscar_perfil_app_por_id(conn, novo_id)
+        _registrar_acao_rastreio(
+            usuario,
+            "Configurações",
+            "Criar perfil de permissões",
+            str(criado.get("nome") or novo_id),
+        )
         return jsonify({"sucesso": True, "perfil": criado})
     except ValueError as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400
@@ -5054,6 +5179,12 @@ def api_perfis_excluir(perfil_id: int):
             _init_usuarios(conn)
             excluir_perfil_app(conn, perfil_id)
             conn.commit()
+        _registrar_acao_rastreio(
+            usuario,
+            "Configurações",
+            "Excluir perfil de permissões",
+            f"Perfil #{perfil_id}",
+        )
         return jsonify({"sucesso": True})
     except ValueError as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400

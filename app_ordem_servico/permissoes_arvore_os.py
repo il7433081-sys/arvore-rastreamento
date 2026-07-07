@@ -258,6 +258,7 @@ MAPA_MODULO_PREFIXOS: dict[str, tuple[str, ...]] = {
     "config_usuarios": ("config_usuarios_",),
     "config_atividade": ("config_atividade_",),
     "config_notificacoes": ("config_notificacoes_",),
+    "config": ("config_",),
 }
 
 ORDEM_ABAS_OS: tuple[str, ...] = tuple(aba["rotulo"] for aba in PERMISSOES_ARVORE_OS)

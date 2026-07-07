@@ -6985,6 +6985,125 @@
             }
         }
 
+        function cfgPerfilPodeVisualizar() {
+            return osTemPermissao("config_perfil_visualizar") || osTemPermissao("config_perfil_editar");
+        }
+        function cfgPerfilPodeEditar() {
+            return osTemPermissao("config_perfil_editar");
+        }
+        function cfgUsuariosPodeVisualizar() {
+            return osTemPermissao("config_usuarios_visualizar");
+        }
+        function cfgUsuariosPodeCriar() {
+            return osTemPermissao("config_usuarios_criar");
+        }
+        function cfgUsuariosPodeEditar() {
+            return osTemPermissao("config_usuarios_editar");
+        }
+        function cfgUsuariosPodeExcluir() {
+            return osTemPermissao("config_usuarios_excluir");
+        }
+        function cfgAtividadePodeVisualizar() {
+            return osTemPermissao("config_atividade_visualizar");
+        }
+        function cfgAtividadePodeExcluir() {
+            return osTemPermissao("config_atividade_excluir");
+        }
+        function cfgAtividadePodeLimpar() {
+            return osTemPermissao("config_atividade_limpar");
+        }
+        function cfgNotifPodeVisualizar() {
+            return osTemPermissao("config_notificacoes_visualizar")
+                || osTemPermissao("config_notificacoes_receber");
+        }
+        function cfgPodeAcessarModulo() {
+            if (PERMISSOES_OS.perfil === "admin") return true;
+            if (!PERMISSOES_OS.controle_abas_ativo) {
+                return cfgPodeConfigurarApp || cfgPodeGerenciarUsuarios
+                    || cfgPodeVerRastreioAtividade || cfgPodeVerProprioPerfil
+                    || usuarioPodeConfigNotificacoesAparelho();
+            }
+            return cfgPerfilPodeVisualizar() || cfgUsuariosPodeVisualizar()
+                || cfgAtividadePodeVisualizar() || cfgNotifPodeVisualizar();
+        }
+        function cfgPodeVerSecao(secId) {
+            if (secId === "cfg-sec-meu-perfil") {
+                return PERMISSOES_OS.perfil === "admin" || cfgPerfilPodeVisualizar()
+                    || cfgPodeVerProprioPerfil;
+            }
+            if (secId === "cfg-sec-auth") {
+                return PERMISSOES_OS.perfil === "admin" || cfgUsuariosPodeVisualizar()
+                    || cfgPodeGerenciarUsuarios;
+            }
+            if (secId === "cfg-sec-rastreio") {
+                return PERMISSOES_OS.perfil === "admin" || cfgAtividadePodeVisualizar()
+                    || cfgPodeVerRastreioAtividade;
+            }
+            if (secId === "cfg-sec-notificacoes") {
+                return PERMISSOES_OS.perfil === "admin" || cfgNotifPodeVisualizar()
+                    || usuarioPodeConfigNotificacoesAparelho();
+            }
+            if (secId === "cfg-sec-app" || secId === "cfg-sec-lista-os"
+                    || secId === "cfg-sec-navegacao" || secId === "cfg-sec-sandbox") {
+                return !!cfgPodeConfigurarApp;
+            }
+            return false;
+        }
+        function cfgSecaoAtivaAtual() {
+            const aberta = document.querySelector(".cfg-panel.is-open:not(.is-collapsed)");
+            return aberta ? aberta.id : "";
+        }
+        function garantirSecaoConfigAtiva() {
+            const ordem = [
+                "cfg-sec-meu-perfil",
+                "cfg-sec-app",
+                "cfg-sec-lista-os",
+                "cfg-sec-navegacao",
+                "cfg-sec-notificacoes",
+                "cfg-sec-sandbox",
+                "cfg-sec-rastreio",
+                "cfg-sec-auth",
+            ];
+            const atual = cfgSecaoAtivaAtual();
+            if (atual && cfgPodeVerSecao(atual)) return true;
+            for (let i = 0; i < ordem.length; i++) {
+                if (cfgPodeVerSecao(ordem[i])) {
+                    const panel = document.getElementById(ordem[i]);
+                    if (panel && !panel.classList.contains("d-none")) {
+                        abrirPainelCfg(ordem[i]);
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        let cfgPodeVerProprioPerfil = false;
+        function montarOptsPermissoesConfig() {
+            const ehAdmin = PERMISSOES_OS.perfil === "admin";
+            const gran = !!PERMISSOES_OS.controle_abas_ativo;
+            const podeVerPerfil = ehAdmin || (gran ? cfgPerfilPodeVisualizar() : cfgPodeVerProprioPerfil);
+            const podeEditarPerfil = ehAdmin || (gran ? cfgPerfilPodeEditar() : cfgPodeEditarProprioPerfil);
+            return {
+                podeGerenciarUsuarios: ehAdmin || (gran ? cfgUsuariosPodeVisualizar() : cfgPodeGerenciarUsuarios),
+                podeConfigurarApp: ehAdmin || cfgPodeConfigurarApp,
+                podeAlterarOrientacaoPdf: ehAdmin || cfgPodeAlterarPdfOri,
+                podeVerProprioPerfil: podeVerPerfil,
+                podeEditarProprioPerfil: podeEditarPerfil,
+                podeVerRastreioAtividade: ehAdmin || (gran ? cfgAtividadePodeVisualizar() : cfgPodeVerRastreioAtividade),
+                podeExcluirRastreioAtividade: ehAdmin || (gran ? cfgAtividadePodeExcluir() : cfgPodeExcluirRastreioAtividade),
+                podeLimparRastreioAtividade: ehAdmin || (gran ? cfgAtividadePodeLimpar() : cfgPodeLimparRastreioAtividade),
+                podeCriarUsuarios: ehAdmin || (gran ? cfgUsuariosPodeCriar() : cfgPodeCriarUsuarios),
+                podeEditarUsuarios: ehAdmin || (gran ? cfgUsuariosPodeEditar() : cfgPodeEditarUsuarios),
+                podeExcluirUsuarios: ehAdmin || (gran ? cfgUsuariosPodeExcluir() : cfgPodeExcluirUsuarios),
+            };
+        }
+        function aplicarPermissoesConfiguracoesUi() {
+            const opts = montarOptsPermissoesConfig();
+            cfgPodeVerProprioPerfil = !!opts.podeVerProprioPerfil;
+            aplicarVisibilidadeConfiguracoes(opts);
+            garantirSecaoConfigAtiva();
+        }
+
         function osPodeDevolverMecanico(os) {
             if (!listaPodeRetomar() || !os.mecanico_id) return false;
             const st = String(os.status || "").trim();
@@ -11163,6 +11282,9 @@
             try {
                 if (typeof aplicarPermissoesCadastrosUi === "function") aplicarPermissoesCadastrosUi();
             } catch (err) { console.error("perm cadastros:", err); }
+            try {
+                if (typeof aplicarPermissoesConfiguracoesUi === "function") aplicarPermissoesConfiguracoesUi();
+            } catch (err) { console.error("perm configuracoes:", err); }
             if (requisicoesPainelAtivo() && typeof carregarRequisicoesPainel === "function") {
                 carregarRequisicoesPainel();
             }
@@ -11190,12 +11312,15 @@
             if (navConfig) {
                 const modsCfg = (PERMISSOES_OS.modulos_visiveis || {});
                 const showCfg = PERMISSOES_OS.perfil === "admin" ||
+                    (typeof cfgPodeAcessarModulo === "function" && cfgPodeAcessarModulo()) ||
                     cfgPodeConfigurarApp ||
                     cfgPodeGerenciarUsuarios ||
                     cfgPodeVerRastreioAtividade ||
+                    cfgPodeVerProprioPerfil ||
                     cfgPodeEditarProprioPerfil ||
                     !!modsCfg.config_perfil ||
-                    osModuloVisivel("config_notificacoes");
+                    osModuloVisivel("config_notificacoes") ||
+                    osModuloVisivel("config");
                 navConfig.classList.toggle("d-none", !showCfg);
             }
             const navEstoque = document.getElementById("nav-mod-estoque");
@@ -12167,6 +12292,8 @@
                         podeGerenciarUsuarios: !!data.pode_gerenciar_usuarios,
                         podeConfigurarApp: !!data.pode_configurar_app,
                         podeAlterarOrientacaoPdf: !!data.pode_alterar_orientacao_pdf,
+                        podeVerProprioPerfil: !!(data.pode_ver_proprio_perfil ?? data.pode_editar_proprio_perfil),
+                        podeVerProprioPerfil: !!(data.pode_ver_proprio_perfil ?? data.pode_editar_proprio_perfil),
                         podeEditarProprioPerfil: !!data.pode_editar_proprio_perfil,
                         podeVerRastreioAtividade: !!data.pode_ver_rastreio_atividade,
                         podeExcluirRastreioAtividade: !!data.pode_excluir_rastreio_atividade,
@@ -12763,6 +12890,8 @@
 
         function aplicarVisibilidadeConfiguracoes(opts) {
             opts = opts || {};
+            cfgPodeEditarProprioPerfil = !!opts.podeEditarProprioPerfil;
+            cfgPodeVerProprioPerfil = !!opts.podeVerProprioPerfil;
             cfgPodeGerenciarUsuarios = !!opts.podeGerenciarUsuarios;
             cfgPodeConfigurarApp = !!opts.podeConfigurarApp;
             cfgPodeAlterarPdfOri = !!opts.podeAlterarOrientacaoPdf;
@@ -12825,8 +12954,14 @@
             if (blocoRastreioTerceiro) {
                 blocoRastreioTerceiro.classList.toggle("d-none", !cfgPodeConfigurarApp);
             }
-            if (secMeu) secMeu.classList.toggle("d-none", !cfgPodeEditarProprioPerfil);
-            if (railMeu) railMeu.classList.toggle("d-none", !cfgPodeEditarProprioPerfil);
+            if (secMeu) secMeu.classList.toggle("d-none", !cfgPodeVerProprioPerfil);
+            if (railMeu) railMeu.classList.toggle("d-none", !cfgPodeVerProprioPerfil);
+            if (btnCfgSalvarMeuPerfil) {
+                btnCfgSalvarMeuPerfil.classList.toggle("d-none", !cfgPodeEditarProprioPerfil);
+            }
+            if (cfgMeuNome) cfgMeuNome.readOnly = !cfgPodeEditarProprioPerfil;
+            if (cfgMeuSenha) cfgMeuSenha.disabled = !cfgPodeEditarProprioPerfil;
+            if (cfgMeuSenha2) cfgMeuSenha2.disabled = !cfgPodeEditarProprioPerfil;
 
             if (cfgExibirTipoOs) cfgExibirTipoOs.disabled = !cfgPodeConfigurarApp;
             if (cfgInternaPublicarOficina) cfgInternaPublicarOficina.disabled = !cfgPodeConfigurarApp;
@@ -12842,9 +12977,10 @@
             if (blocoFotosOs) blocoFotosOs.classList.toggle("d-none", !cfgPodeConfigurarApp);
             aplicarUiCfgFotosOsEdicao();
 
-            if (cfgPodeEditarProprioPerfil && USUARIO_SESSAO) {
+            if (cfgPodeVerProprioPerfil && USUARIO_SESSAO) {
                 preencherFormularioMeuPerfil(USUARIO_SESSAO);
             }
+            garantirSecaoConfigAtiva();
         }
 
         function aplicarUiExigirLogin() {
@@ -13503,6 +13639,7 @@
                     podeGerenciarUsuarios: !!data.pode_gerenciar_usuarios,
                     podeConfigurarApp: !!data.pode_configurar_app,
                     podeAlterarOrientacaoPdf: !!data.pode_alterar_orientacao_pdf,
+                    podeVerProprioPerfil: !!(data.pode_ver_proprio_perfil ?? data.pode_editar_proprio_perfil),
                     podeEditarProprioPerfil: !!data.pode_editar_proprio_perfil,
                     podeVerRastreioAtividade: !!data.pode_ver_rastreio_atividade,
                     podeExcluirRastreioAtividade: !!data.pode_excluir_rastreio_atividade,
@@ -13530,8 +13667,10 @@
                 } else if (usuarioRecebeNotificacoesFluxo() || usuarioPodeConfigNotificacoesAparelho()) {
                     await carregarConfigNotificacoesAparelho();
                 }
-                if (data.pode_editar_proprio_perfil && !data.pode_configurar_app) {
+                if (data.pode_ver_proprio_perfil && !data.pode_configurar_app) {
                     abrirPainelCfg("cfg-sec-meu-perfil");
+                } else if (typeof aplicarPermissoesConfiguracoesUi === "function") {
+                    aplicarPermissoesConfiguracoesUi();
                 }
             } catch (err) {
                 if (PDF_ORIENTACAO_SALVA) aplicarOrientacaoPdfSalva(PDF_ORIENTACAO_SALVA);
@@ -14773,7 +14912,10 @@
 
         if (btnCfgSalvarMeuPerfil) {
             btnCfgSalvarMeuPerfil.addEventListener("click", async function () {
-                if (!cfgPodeEditarProprioPerfil) return;
+                if (!cfgPodeEditarProprioPerfil) {
+                    osToast("Sem permissão para editar perfil.", "info");
+                    return;
+                }
                 const senha = cfgMeuSenha ? cfgMeuSenha.value : "";
                 const senha2 = cfgMeuSenha2 ? cfgMeuSenha2.value : "";
                 if (senha && senha !== senha2) {
@@ -14978,6 +15120,7 @@
         const navModConfig = document.getElementById("nav-mod-config");
         if (navModConfig) {
             navModConfig.addEventListener("shown.bs.tab", function () {
+                aplicarPermissoesConfiguracoesUi();
                 carregarConfigApp();
             });
         }
@@ -16391,7 +16534,10 @@
 
         async function salvarConfigNotificacoesAparelho() {
             const fb = document.getElementById("cfg-notificacoes-aparelho-feedback");
-            if (!cfgNotificacoesAparelhoPodeEditar) return;
+            if (!cfgNotificacoesAparelhoPodeEditar) {
+                osToast("Sem permissão para alterar notificações do aparelho.", "info");
+                return;
+            }
             const itens = {};
             document.querySelectorAll(".cfg-notif-switch").forEach(function (inp) {
                 const chave = inp.getAttribute("data-chave");
