@@ -6455,6 +6455,9 @@
         let osCargaRestrita = false;
         let podeMarcarClienteAvisado = false;
         let podeCopiarOs = false;
+        let podePausarOs = false;
+        let podeRetomarOs = false;
+        let podeAtribuirMecanicoLista = false;
         let podeCancelarOs = false;
         let podeReativarOs = false;
         let podeExcluirOsCancelada = false;
@@ -6553,14 +6556,53 @@
             });
         }
 
-        function usuarioPodeAcoesListaOs() {
-            return PERMISSOES_OS.pode_atribuir_mecanico ||
-                PERMISSOES_OS.pode_editar_tudo ||
-                PERMISSOES_OS.perfil !== "mecanico";
+        function listaPodeVisualizar() {
+            return osTemPermissao("lista_os_geral_visualizar");
+        }
+        function listaPodeAtribuirMecanico() {
+            return osTemPermissao("lista_os_geral_atribuir_mecanico");
+        }
+        function listaPodePausar() {
+            return osTemPermissao("lista_os_geral_pausar");
+        }
+        function listaPodeRetomar() {
+            return osTemPermissao("lista_os_geral_retomar");
+        }
+        function listaPodeClienteAvisado() {
+            return osTemPermissao("lista_os_geral_cliente_avisado");
+        }
+        function listaPodeCopiarRetorno() {
+            return osTemPermissao("lista_os_geral_copiar_retorno");
+        }
+        function listaPodeCancelar() {
+            return osTemPermissao("lista_os_geral_cancelar");
+        }
+        function listaPodeReativar() {
+            return osTemPermissao("lista_os_geral_reativar");
+        }
+        function listaPodeExcluir() {
+            return osTemPermissao("lista_os_geral_excluir");
+        }
+        function listaPodeEditarInfo() {
+            return listaPodePausar() || listaPodeRetomar() || listaPodeClienteAvisado() ||
+                listaPodeCopiarRetorno() || listaPodeCancelar() || listaPodeReativar() ||
+                listaPodeExcluir();
+        }
+        function aplicarPermissoesListaOsUi() {
+            const mecanico = PERMISSOES_OS.perfil === "mecanico";
+            const podeVer = !mecanico && listaPodeVisualizar();
+            const blocoQuadro = document.getElementById("bloco-quadro-os");
+            const blocoPausadas = document.getElementById("bloco-os-pausadas");
+            const blocoCanceladas = document.getElementById("bloco-os-canceladas");
+            const blocoSalvas = document.getElementById("bloco-os-salvas");
+            if (blocoQuadro) blocoQuadro.classList.toggle("d-none", mecanico || !podeVer);
+            if (blocoPausadas) blocoPausadas.classList.toggle("d-none", !podeVer);
+            if (blocoCanceladas) blocoCanceladas.classList.toggle("d-none", !podeVer);
+            if (blocoSalvas) blocoSalvas.classList.toggle("d-none", !podeVer);
         }
 
         function osPodeDevolverMecanico(os) {
-            if (!usuarioPodeAcoesListaOs() || !os.mecanico_id) return false;
+            if (!listaPodeRetomar() || !os.mecanico_id) return false;
             const st = String(os.status || "").trim();
             if (st === "pronto_mecanico" || st === "cliente_avisado") return true;
             const cod = os.status_exibicao && os.status_exibicao.codigo;
@@ -6570,7 +6612,8 @@
         function htmlBadgeStatusOs(st, numeroOs) {
             if (!st) return "—";
             const cor = st.cor || "aguardando";
-            const clicavel = !!(st.clicavel && st.acao === "marcar_cliente_avisado");
+            const clicavel = !!(st.clicavel && st.acao === "marcar_cliente_avisado" &&
+                listaPodeClienteAvisado() && podeMarcarClienteAvisado);
             const cls = "status-os-badge status-os-" + cor +
                 (clicavel ? " status-os-clicavel" : "");
             const dica = st.dica ? ' title="' + escHtml(st.dica) + '"' : "";
@@ -6658,8 +6701,8 @@
         }
 
         async function marcarClienteAvisadoOs(numeroOs) {
-            if (!usuarioPodeAcoesListaOs()) {
-                osToast("Apenas responsáveis podem marcar que o cliente foi avisado.", 'info');
+            if (!listaPodeClienteAvisado()) {
+                osToast("Sem permissão para marcar que o cliente foi avisado.", 'info');
                 return;
             }
             try {
@@ -7190,7 +7233,7 @@
 
         function montarSelectAtribuirMecanico(numeroOs, mecanicoIdAtual, mecanicoNomeAtual, statusOs) {
             const bloqueado = STATUS_OS_BLOQUEIA_MECANICO.indexOf(String(statusOs || "")) !== -1;
-            if (!PERMISSOES_OS.pode_atribuir_mecanico || bloqueado) {
+            if (!listaPodeAtribuirMecanico() || !podeAtribuirMecanicoLista || bloqueado) {
                 return escHtml(mecanicoNomeAtual || "—");
             }
             let html = '<select class="form-select sel-atribuir-mec" data-numero="' + numeroOs + '" title="Atribuir mecânico">';
@@ -7204,6 +7247,9 @@
         }
 
         async function atribuirMecanicoOs(numeroOs, mecanicoId) {
+            if (!listaPodeAtribuirMecanico() || !podeAtribuirMecanicoLista) {
+                throw new Error("Sem permissão para atribuir mecânico na lista.");
+            }
             const resp = await fetch("/api/os/" + encodeURIComponent(numeroOs) + "/atribuir", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -7223,6 +7269,10 @@
         }
 
         async function devolverOsAoMecanico(numeroOs, anchorEl) {
+            if (!listaPodeRetomar()) {
+                osToast("Sem permissão para devolver a O.S. ao mecânico.", "info");
+                return;
+            }
             const senha = await pedirConfirmacaoSenha(anchorEl, {
                 titulo: "Devolver ao mecânico",
                 texto: "Confirme com sua senha para reabrir a O.S. nº " + numeroOs +
@@ -7298,7 +7348,7 @@
             if (!tbodyOsSalvas) return;
             tbodyOsSalvas.innerHTML = '<tr><td colspan="9" class="text-muted">Carregando...</td></tr>';
             try {
-                if (!cacheMecanicos.length && PERMISSOES_OS.pode_atribuir_mecanico) {
+                if (!cacheMecanicos.length && podeAtribuirMecanicoLista) {
                     await carregarMecanicosSelect();
                 }
                 const resp = await fetch("/listar_os?limite=15", FETCH_OPTS);
@@ -7319,8 +7369,11 @@
                 if (data.marcadores) listaOsMarcadoresCache = data.marcadores;
                 if (data.pausas_tipos) listaOsPausasCache = data.pausas_tipos;
                 const podeEditarInfo = !!data.pode_editar_info_lista;
-                podeMarcarClienteAvisado = data.pode_marcar_cliente_avisado !== false && usuarioPodeAcoesListaOs();
+                podeMarcarClienteAvisado = !!data.pode_marcar_cliente_avisado;
+                podeAtribuirMecanicoLista = !!data.pode_atribuir_mecanico_lista;
                 podeCopiarOs = !!data.pode_copiar_os;
+                podePausarOs = !!data.pode_pausar_os;
+                podeRetomarOs = !!data.pode_retomar_os;
                 podeCancelarOs = !!data.pode_cancelar_os;
                 podeReativarOs = !!data.pode_reativar_os;
                 podeExcluirOsCancelada = !!data.pode_excluir_os_cancelada;
@@ -7332,7 +7385,7 @@
                     );
                     const badgeSt = htmlBadgeStatusOs(os.status_exibicao, os.numero_os);
                     const colInfo = htmlInfoListaOs(os, podeEditarInfo, data.marcadores);
-                    const mostrarDevolver = osPodeDevolverMecanico(os);
+                    const mostrarDevolver = !!os.pode_devolver_mecanico;
                     let acoesHtml = '<div class="os-lista-acoes">' +
                         '<button type="button" class="btn btn-sm btn-os-primary btn-abrir-os" data-numero="' +
                         os.numero_os + '"><i class="bi bi-pencil-square"></i> Abrir</button>';
@@ -9423,8 +9476,8 @@
         }
 
         async function marcarPausaOs(numeroOs, tipo) {
-            if (!usuarioPodeAcoesListaOs()) {
-                osToast("Apenas responsáveis podem marcar pausa.", "info");
+            if (!listaPodePausar() || !podePausarOs) {
+                osToast("Sem permissão para marcar pausa.", "info");
                 return;
             }
             try {
@@ -9451,8 +9504,8 @@
         }
 
         async function retomarOsPausa(numeroOs) {
-            if (!usuarioPodeAcoesListaOs()) {
-                osToast("Apenas responsáveis podem retomar a O.S.", "info");
+            if (!listaPodeRetomar() || !podeRetomarOs) {
+                osToast("Sem permissão para retomar a O.S.", "info");
                 return;
             }
             const ok = await osConfirm("Retomar esta O.S. para o mecânico?");
@@ -9478,7 +9531,7 @@
         }
 
         function htmlMenuPausaOs(numeroOs, statusAtual) {
-            if (!usuarioPodeAcoesListaOs()) return "";
+            if (!listaPodePausar() || !podePausarOs) return "";
             if (osStatusEmPausa(statusAtual)) return "";
             const pausas = listaOsPausasCache || [];
             if (!pausas.length) return "";
@@ -9499,7 +9552,7 @@
             const bloco = document.getElementById("bloco-os-pausadas");
             const tbody = document.getElementById("tbody-os-pausadas");
             if (!bloco || !tbody) return;
-            if (!usuarioPodeAcoesListaOs()) {
+            if (!listaPodeVisualizar()) {
                 bloco.classList.add("d-none");
                 return;
             }
@@ -9524,6 +9577,7 @@
                     data.pausas_tipos
                 );
                 if (data.pausas_tipos) listaOsPausasCache = data.pausas_tipos;
+                podeRetomarOs = !!data.pode_retomar_os;
                 const badgePausa = document.getElementById("badge-os-pausadas-total");
                 const totalPausa = (data.contagem && data.contagem.total != null)
                     ? data.contagem.total
@@ -9538,15 +9592,18 @@
                 ordens.forEach(function (os) {
                     const tr = document.createElement("tr");
                     const badgeSt = htmlBadgeStatusOs(os.status_exibicao, os.numero_os);
+                    let acoesPausa = "";
+                    if (podeRetomarOs) {
+                        acoesPausa = '<button type="button" class="btn btn-sm btn-outline-success btn-retomar-os" data-numero="' +
+                            os.numero_os + '"><i class="bi bi-play-circle"></i> Retomar</button>';
+                    }
                     tr.innerHTML =
                         "<td><strong>" + os.numero_os + "</strong></td>" +
                         "<td>" + escHtml(os.cliente_nome || "—") + "</td>" +
                         "<td>" + escHtml(os.data_entrada || "—") + "</td>" +
                         "<td>" + badgeSt + "</td>" +
                         "<td>" + escHtml(os.mecanico_nome || "—") + "</td>" +
-                        '<td><div class="os-lista-acoes">' +
-                        '<button type="button" class="btn btn-sm btn-outline-success btn-retomar-os" data-numero="' +
-                        os.numero_os + '"><i class="bi bi-play-circle"></i> Retomar</button>' +
+                        '<td><div class="os-lista-acoes">' + acoesPausa +
                         '<button type="button" class="btn btn-sm btn-os-primary btn-abrir-os" data-numero="' +
                         os.numero_os + '"><i class="bi bi-pencil-square"></i> Abrir</button>' +
                         "</div></td>";
@@ -9637,7 +9694,7 @@
             const bloco = document.getElementById("bloco-os-canceladas");
             const tbody = document.getElementById("tbody-os-canceladas");
             if (!bloco || !tbody) return;
-            if (!usuarioPodeAcoesListaOs()) {
+            if (!listaPodeVisualizar()) {
                 bloco.classList.add("d-none");
                 return;
             }
@@ -10634,7 +10691,6 @@
                 blocoPdfOri.classList.toggle("d-none", mecanico || !osTemPermissao("ordem_os_geral_gerar_pdf"));
             }
             if (blocoMec) blocoMec.classList.toggle("d-none", !PERMISSOES_OS.pode_atribuir_mecanico);
-            if (blocoQuadro) blocoQuadro.classList.toggle("d-none", mecanico);
             if (blocoResumoMec) blocoResumoMec.classList.add("d-none");
             if (blocoAlegacoes) blocoAlegacoes.classList.remove("d-none");
             if (tabDiag && tabDiag.parentElement) {
@@ -10657,6 +10713,9 @@
             try {
                 if (typeof aplicarPermissoesPreOrcamentosUi === "function") aplicarPermissoesPreOrcamentosUi();
             } catch (err) { console.error("perm pre-orcamentos:", err); }
+            try {
+                if (typeof aplicarPermissoesListaOsUi === "function") aplicarPermissoesListaOsUi();
+            } catch (err) { console.error("perm lista-os:", err); }
             const navPre = document.getElementById("nav-mod-pre-orcamentos");
             if (navPre && !mecanico) {
                 const mostrarPre = PERMISSOES_OS.perfil === "admin" || osModuloVisivel("pre_orcamentos");
@@ -11984,6 +12043,9 @@
         const navModLista = document.getElementById("nav-mod-lista");
         if (navModLista) {
             navModLista.addEventListener("shown.bs.tab", function () {
+                aplicarPermissoesListaOsUi();
+                carregarQuadroOs();
+                carregarPerfisSidebar();
                 carregarListaOs();
                 carregarOsPausadas(listaPausaFiltroAtual);
                 carregarOsCanceladas();
@@ -14508,13 +14570,6 @@
             });
         }
 
-        if (navModLista) {
-            navModLista.addEventListener("shown.bs.tab", function () {
-                carregarQuadroOs();
-                carregarPerfisSidebar();
-                carregarOsPausadas(listaPausaFiltroAtual);
-            });
-        }
 
         const navModOrdem = document.getElementById("nav-mod-ordem");
         if (navModOrdem) {

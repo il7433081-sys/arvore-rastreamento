@@ -130,6 +130,7 @@ PERMISSOES_ARVORE_OS: tuple[dict[str, Any], ...] = (
                 "lista_os_geral",
                 (
                     "visualizar",
+                    "atribuir_mecanico",
                     "pausar",
                     "retomar",
                     "cliente_avisado",
@@ -411,6 +412,7 @@ def permissoes_padrao_mecanico() -> dict[str, bool]:
         "ordem_os_geral_gerar_pdf",
         "ordem_os_geral_finalizar",
         "lista_os_geral_visualizar",
+        "lista_os_geral_atribuir_mecanico",
         "lista_os_geral_pausar",
         "lista_os_geral_retomar",
         "lista_os_geral_cliente_avisado",

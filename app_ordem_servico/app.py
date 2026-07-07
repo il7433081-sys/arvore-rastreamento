@@ -2538,7 +2538,6 @@ def _usuario_pode_atribuir_mecanico(usuario: dict[str, Any] | None) -> bool:
         "agendamentos_",
         "pre_orcamentos_",
         "ordem_os_",
-        "lista_os_",
         "fotos_os_",
         "requisicoes_",
         "estoque_",
@@ -2759,37 +2758,89 @@ def _status_excluidos_lista_os_ativa(conn: sqlite3.Connection) -> tuple[str, ...
     return (*_status_pausa_sql(conn), _OS_STATUS_CANCELADO)
 
 
-def _usuario_pode_cancelar_os_lista(usuario: dict[str, Any] | None) -> bool:
-    if not _usuario_pode_acoes_responsavel_lista_os(usuario):
+_LISTA_OS_ACOES_GRANULARES = (
+    "lista_os_geral_pausar",
+    "lista_os_geral_retomar",
+    "lista_os_geral_cliente_avisado",
+    "lista_os_geral_copiar_retorno",
+    "lista_os_geral_cancelar",
+    "lista_os_geral_reativar",
+    "lista_os_geral_excluir",
+)
+
+
+def _usuario_pode_ver_lista_os(usuario: dict[str, Any] | None) -> bool:
+    if not _usuario_pode_ver_todas_os(usuario):
+        return False
+    if not _usuario_modulo_visivel(usuario, "lista"):
         return False
     if not usuario or not _usuario_acesso_restrito(usuario):
         return True
     return modulo_tem_alguma_permissao(
         _permissoes_granulares_usuario(usuario),
-        ("lista_os_geral_cancelar",),
+        ("lista_os_geral_visualizar",),
     )
+
+
+def _usuario_pode_acao_lista_os(
+    usuario: dict[str, Any] | None,
+    *chaves: str,
+) -> bool:
+    if not _usuario_pode_ver_lista_os(usuario):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return modulo_tem_alguma_permissao(
+        _permissoes_granulares_usuario(usuario),
+        chaves,
+    )
+
+
+def _usuario_pode_atribuir_mecanico_lista_os(usuario: dict[str, Any] | None) -> bool:
+    if not _usuario_pode_ver_lista_os(usuario):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return _usuario_pode_atribuir_mecanico(usuario)
+    return _usuario_pode_acao_lista_os(usuario, "lista_os_geral_atribuir_mecanico")
+
+
+def _usuario_pode_pausar_lista_os(usuario: dict[str, Any] | None) -> bool:
+    return _usuario_pode_acao_lista_os(usuario, "lista_os_geral_pausar")
+
+
+def _usuario_pode_retomar_lista_os(usuario: dict[str, Any] | None) -> bool:
+    return _usuario_pode_acao_lista_os(usuario, "lista_os_geral_retomar")
+
+
+def _usuario_pode_marcar_cliente_avisado_lista(usuario: dict[str, Any] | None) -> bool:
+    return _usuario_pode_acao_lista_os(usuario, "lista_os_geral_cliente_avisado")
+
+
+def _usuario_pode_copiar_retorno_lista(usuario: dict[str, Any] | None) -> bool:
+    return _usuario_pode_acao_lista_os(usuario, "lista_os_geral_copiar_retorno")
+
+
+def _usuario_pode_editar_info_lista_os(usuario: dict[str, Any] | None) -> bool:
+    if not _usuario_pode_ver_lista_os(usuario):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return modulo_tem_alguma_permissao(
+        _permissoes_granulares_usuario(usuario),
+        _LISTA_OS_ACOES_GRANULARES,
+    )
+
+
+def _usuario_pode_cancelar_os_lista(usuario: dict[str, Any] | None) -> bool:
+    return _usuario_pode_acao_lista_os(usuario, "lista_os_geral_cancelar")
 
 
 def _usuario_pode_reativar_os_lista(usuario: dict[str, Any] | None) -> bool:
-    if not _usuario_pode_acoes_responsavel_lista_os(usuario):
-        return False
-    if not usuario or not _usuario_acesso_restrito(usuario):
-        return True
-    return modulo_tem_alguma_permissao(
-        _permissoes_granulares_usuario(usuario),
-        ("lista_os_geral_reativar",),
-    )
+    return _usuario_pode_acao_lista_os(usuario, "lista_os_geral_reativar")
 
 
 def _usuario_pode_excluir_os_cancelada(usuario: dict[str, Any] | None) -> bool:
-    if not _usuario_pode_acoes_responsavel_lista_os(usuario):
-        return False
-    if not usuario or not _usuario_acesso_restrito(usuario):
-        return True
-    return modulo_tem_alguma_permissao(
-        _permissoes_granulares_usuario(usuario),
-        ("lista_os_geral_excluir",),
-    )
+    return _usuario_pode_acao_lista_os(usuario, "lista_os_geral_excluir")
 
 
 def _enriquecer_info_lista_os(
@@ -2960,23 +3011,16 @@ def _validar_senha_usuario_logado(
 def _usuario_pode_copiar_os(usuario: dict[str, Any] | None) -> bool:
     if not usuario:
         return False
+    if _usuario_acesso_restrito(usuario):
+        return _usuario_pode_copiar_retorno_lista(usuario)
     if _usuario_pode_atribuir_mecanico(usuario):
         return True
     return _mecanico_pode_criar_os(usuario)
 
 
 def _usuario_pode_acoes_responsavel_lista_os(usuario: dict[str, Any] | None) -> bool:
-    """Quem vê a lista completa pode marcar cliente avisado / devolver ao mecânico."""
-    if not _usuario_pode_ver_todas_os(usuario):
-        return False
-    if not _usuario_modulo_visivel(usuario, "lista"):
-        return False
-    if _usuario_acesso_restrito(usuario):
-        return modulo_tem_alguma_permissao(
-            _permissoes_granulares_usuario(usuario),
-            ("lista_os_",),
-        )
-    return True
+    """Qualquer ação na lista além de só visualizar."""
+    return _usuario_pode_editar_info_lista_os(usuario)
 
 
 def _pode_devolver_os_ao_mecanico(
@@ -2984,7 +3028,7 @@ def _pode_devolver_os_ao_mecanico(
     mecanico_id: int | None,
     usuario: dict[str, Any] | None,
 ) -> bool:
-    if not _usuario_pode_acoes_responsavel_lista_os(usuario) or not mecanico_id:
+    if not _usuario_pode_retomar_lista_os(usuario) or not mecanico_id:
         return False
     return str(status or "").strip() in ("pronto_mecanico", "cliente_avisado")
 
@@ -4376,10 +4420,13 @@ def api_config_lista_os_put():
 @app.route("/api/os/<int:numero_os>/info-lista", methods=["POST"])
 def api_os_info_lista(numero_os: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_acoes_responsavel_lista_os(usuario):
+    negado = _negar_sem_modulo(usuario, "lista")
+    if negado:
+        return negado
+    if not _usuario_pode_editar_info_lista_os(usuario):
         return jsonify({
             "sucesso": False,
-            "mensagem": "Apenas responsáveis podem alterar informações da lista.",
+            "mensagem": "Sem permissão para alterar informações da lista.",
         }), 403
     payload = request.get_json(silent=True) or {}
     try:
@@ -4415,6 +4462,12 @@ def api_os_info_lista(numero_os: int):
                 (novo_json, int(numero_os)),
             )
             info = _enriquecer_info_lista_os(conn, novo_json)
+        _registrar_acao_rastreio(
+            usuario,
+            "Lista de O.S.",
+            "Alterar info da lista",
+            f"O.S. nº {numero_os}",
+        )
         return jsonify({"sucesso": True, "numero_os": numero_os, **info})
     except sqlite3.Error as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 500
@@ -6119,8 +6172,12 @@ def api_os_fotos_marcar_enviado(numero_os: int):
 @app.route("/api/os/<int:numero_os>/atribuir", methods=["POST", "PUT"])
 def api_atribuir_os(numero_os: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_atribuir_mecanico(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Sem permissão para atribuir mecânico."}), 403
+    negado = _negar_sem_modulo(usuario, "lista")
+    if negado:
+        return negado
+    negado = _negar_sem_permissao(usuario, "lista_os_geral_atribuir_mecanico")
+    if negado:
+        return negado
     if not DATABASE_PATH.is_file():
         return jsonify({"sucesso": False, "mensagem": "Banco de dados não encontrado."}), 500
     payload = request.get_json(silent=True) or {}
@@ -6194,6 +6251,17 @@ def api_atribuir_os(numero_os: int):
                             )
                     except json.JSONDecodeError:
                         pass
+        detalhe_rastreio = f"O.S. nº {numero_os}"
+        if mecanico_id:
+            detalhe_rastreio += f" — {mecanico_nome or 'mecânico'}"
+        else:
+            detalhe_rastreio += " — atribuição removida"
+        _registrar_acao_rastreio(
+            usuario,
+            "Lista de O.S.",
+            "Atribuir mecânico" if mecanico_id else "Remover atribuição de mecânico",
+            detalhe_rastreio,
+        )
         return jsonify({
             "sucesso": True,
             "mensagem": "Mecânico atribuído com sucesso." if mecanico_id else "Atribuição removida.",
@@ -7152,16 +7220,23 @@ def api_finalizar_servico(numero_os: int):
 @app.route("/api/os/<int:numero_os>/cliente-avisado", methods=["POST"])
 def api_marcar_cliente_avisado(numero_os: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_acoes_responsavel_lista_os(usuario):
-        return jsonify({
-            "sucesso": False,
-            "mensagem": "Apenas responsáveis podem marcar que o cliente foi avisado.",
-        }), 403
+    negado = _negar_sem_modulo(usuario, "lista")
+    if negado:
+        return negado
+    negado = _negar_sem_permissao(usuario, "lista_os_geral_cliente_avisado")
+    if negado:
+        return negado
     try:
         init_ordens_servico()
         with conexao_banco() as conn:
             marcar_cliente_avisado_os(conn, numero_os)
         _sync_oficina_status_os(numero_os, "cliente_avisado")
+        _registrar_acao_rastreio(
+            usuario,
+            "Lista de O.S.",
+            "Marcar cliente avisado",
+            f"O.S. nº {numero_os}",
+        )
         return jsonify({
             "sucesso": True,
             "mensagem": f"O.S. nº {numero_os}: cliente marcado como avisado.",
@@ -7176,11 +7251,12 @@ def api_marcar_cliente_avisado(numero_os: int):
 @app.route("/api/os/<int:numero_os>/devolver-mecanico", methods=["POST"])
 def api_devolver_os_mecanico(numero_os: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_acoes_responsavel_lista_os(usuario):
-        return jsonify({
-            "sucesso": False,
-            "mensagem": "Apenas responsáveis podem devolver a O.S. ao mecânico.",
-        }), 403
+    negado = _negar_sem_modulo(usuario, "lista")
+    if negado:
+        return negado
+    negado = _negar_sem_permissao(usuario, "lista_os_geral_retomar")
+    if negado:
+        return negado
     payload = request.get_json(silent=True) or {}
     senha = str(payload.get("senha") or "")
     ok, msg = _validar_senha_usuario_logado(usuario, senha)
@@ -7190,6 +7266,12 @@ def api_devolver_os_mecanico(numero_os: int):
         init_ordens_servico()
         with conexao_banco() as conn:
             info = devolver_os_ao_mecanico(conn, numero_os)
+        _registrar_acao_rastreio(
+            usuario,
+            "Lista de O.S.",
+            "Devolver ao mecânico",
+            f"O.S. nº {numero_os} — {info.get('mecanico_nome') or ''}".strip(),
+        )
         return jsonify({
             "sucesso": True,
             "mensagem": (
@@ -7209,8 +7291,12 @@ def api_devolver_os_mecanico(numero_os: int):
 @app.route("/api/os/pausadas", methods=["GET"])
 def api_os_pausadas():
     usuario = _usuario_logado()
-    if not _usuario_pode_acoes_responsavel_lista_os(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_modulo(usuario, "lista")
+    if negado:
+        return negado
+    negado = _negar_sem_permissao(usuario, "lista_os_geral_visualizar")
+    if negado:
+        return negado
     if not DATABASE_PATH.is_file():
         return jsonify({"sucesso": False, "mensagem": "Banco de dados não encontrado."}), 500
     filtro = (request.args.get("filtro") or "geral").strip().lower()
@@ -7232,6 +7318,7 @@ def api_os_pausadas():
             "contagem": contagem,
             "pausas_tipos": pausas_tipos,
             "ordens": ordens,
+            "pode_retomar_os": _usuario_pode_retomar_lista_os(usuario),
         })
     except sqlite3.Error as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 500
@@ -7240,11 +7327,12 @@ def api_os_pausadas():
 @app.route("/api/os/<int:numero_os>/pausa", methods=["POST"])
 def api_definir_pausa_os(numero_os: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_acoes_responsavel_lista_os(usuario):
-        return jsonify({
-            "sucesso": False,
-            "mensagem": "Apenas responsáveis podem marcar pausa na O.S.",
-        }), 403
+    negado = _negar_sem_modulo(usuario, "lista")
+    if negado:
+        return negado
+    negado = _negar_sem_permissao(usuario, "lista_os_geral_pausar")
+    if negado:
+        return negado
     payload = request.get_json(silent=True) or {}
     tipo_raw = str(payload.get("tipo") or payload.get("pausa") or "").strip().lower()
     if not tipo_raw:
@@ -7279,11 +7367,12 @@ def api_definir_pausa_os(numero_os: int):
 @app.route("/api/os/<int:numero_os>/retomar", methods=["POST"])
 def api_retomar_os_pausa(numero_os: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_acoes_responsavel_lista_os(usuario):
-        return jsonify({
-            "sucesso": False,
-            "mensagem": "Apenas responsáveis podem retomar a O.S. para o mecânico.",
-        }), 403
+    negado = _negar_sem_modulo(usuario, "lista")
+    if negado:
+        return negado
+    negado = _negar_sem_permissao(usuario, "lista_os_geral_retomar")
+    if negado:
+        return negado
     try:
         init_ordens_servico()
         with conexao_banco() as conn:
@@ -7314,8 +7403,12 @@ def api_retomar_os_pausa(numero_os: int):
 @app.route("/api/os/canceladas", methods=["GET"])
 def api_os_canceladas():
     usuario = _usuario_logado()
-    if not _usuario_pode_acoes_responsavel_lista_os(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_modulo(usuario, "lista")
+    if negado:
+        return negado
+    negado = _negar_sem_permissao(usuario, "lista_os_geral_visualizar")
+    if negado:
+        return negado
     if not DATABASE_PATH.is_file():
         return jsonify({"sucesso": False, "mensagem": "Banco de dados não encontrado."}), 500
     limite = request.args.get("limite", "50")
@@ -7507,6 +7600,12 @@ def api_copiar_os_retorno(numero_os: int):
                 numero_os_origem=numero_os,
                 nome_atendente=nome_atendente or None,
             )
+        _registrar_acao_rastreio(
+            usuario,
+            "Lista de O.S.",
+            "Copiar para retorno",
+            f"O.S. nº {numero_os}",
+        )
         return jsonify({
             "sucesso": True,
             "numero_os_origem": numero_os,
@@ -7664,6 +7763,13 @@ def listar_os():
         return jsonify({"sucesso": False, "mensagem": "Banco de dados não encontrado."}), 500
 
     usuario = _usuario_logado()
+    if not _usuario_e_mecanico(usuario):
+        negado = _negar_sem_modulo(usuario, "lista")
+        if negado:
+            return negado
+        negado = _negar_sem_permissao(usuario, "lista_os_geral_visualizar")
+        if negado:
+            return negado
     ordens: list[dict[str, Any]] = []
     marcadores_cfg: list[dict[str, Any]] = []
     pausas_cfg: list[dict[str, Any]] = []
@@ -7755,14 +7861,17 @@ def listar_os():
         "sucesso": True,
         "total": len(ordens),
         "ordens": ordens,
-        "pode_marcar_cliente_avisado": _usuario_pode_acoes_responsavel_lista_os(usuario),
+        "pode_marcar_cliente_avisado": _usuario_pode_marcar_cliente_avisado_lista(usuario),
+        "pode_atribuir_mecanico_lista": _usuario_pode_atribuir_mecanico_lista_os(usuario),
         "pode_copiar_os": _usuario_pode_copiar_os(usuario),
-        "pode_editar_info_lista": _usuario_pode_acoes_responsavel_lista_os(usuario),
+        "pode_editar_info_lista": _usuario_pode_editar_info_lista_os(usuario),
+        "pode_pausar_os": _usuario_pode_pausar_lista_os(usuario),
+        "pode_retomar_os": _usuario_pode_retomar_lista_os(usuario),
         "pode_cancelar_os": _usuario_pode_cancelar_os_lista(usuario),
         "pode_reativar_os": _usuario_pode_reativar_os_lista(usuario),
         "pode_excluir_os_cancelada": _usuario_pode_excluir_os_cancelada(usuario),
-        "marcadores": marcadores_cfg if _usuario_pode_acoes_responsavel_lista_os(usuario) else [],
-        "pausas_tipos": pausas_cfg if _usuario_pode_acoes_responsavel_lista_os(usuario) else [],
+        "marcadores": marcadores_cfg if _usuario_pode_editar_info_lista_os(usuario) else [],
+        "pausas_tipos": pausas_cfg if _usuario_pode_pausar_lista_os(usuario) else [],
     })
 
 
