@@ -2538,7 +2538,6 @@ def _usuario_pode_atribuir_mecanico(usuario: dict[str, Any] | None) -> bool:
         "agendamentos_",
         "pre_orcamentos_",
         "ordem_os_",
-        "estoque_",
         "cadastros_",
     )
     return any(
@@ -3101,6 +3100,91 @@ def _permissoes_payload_requisicoes(usuario: dict[str, Any] | None) -> dict[str,
         "pode_editar_interna": _usuario_pode_editar_requisicoes_interna(usuario),
         "pode_finalizar_interna": _usuario_pode_finalizar_requisicoes_interna(usuario),
     }
+
+
+def _usuario_pode_ver_estoque(usuario: dict[str, Any] | None) -> bool:
+    if _usuario_e_mecanico(usuario):
+        return False
+    if not _usuario_modulo_visivel(usuario, "estoque"):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return _usuario_tem_permissao(usuario, "estoque_geral_visualizar")
+
+
+def _usuario_pode_movimentar_estoque(usuario: dict[str, Any] | None) -> bool:
+    if not _usuario_pode_ver_estoque(usuario):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return _usuario_tem_permissao(usuario, "estoque_geral_movimentar")
+
+
+def _usuario_pode_pedidos_estoque(usuario: dict[str, Any] | None) -> bool:
+    if _usuario_e_mecanico(usuario):
+        return False
+    if not _usuario_modulo_visivel(usuario, "estoque"):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return _usuario_tem_permissao(usuario, "estoque_geral_pedidos")
+
+
+def _usuario_pode_cadastrar_peca_via_estoque(usuario: dict[str, Any] | None) -> bool:
+    return (
+        _usuario_pode_movimentar_estoque(usuario)
+        or _usuario_tem_permissao(usuario, "cadastros_pecas_criar")
+    )
+
+
+def _usuario_pode_editar_peca_via_estoque(usuario: dict[str, Any] | None) -> bool:
+    return (
+        _usuario_pode_movimentar_estoque(usuario)
+        or _usuario_tem_permissao(usuario, "cadastros_pecas_editar")
+    )
+
+
+def _permissoes_payload_estoque(usuario: dict[str, Any] | None) -> dict[str, bool]:
+    return {
+        "pode_visualizar": _usuario_pode_ver_estoque(usuario),
+        "pode_movimentar": _usuario_pode_movimentar_estoque(usuario),
+        "pode_pedidos": _usuario_pode_pedidos_estoque(usuario),
+        "pode_criar_peca": _usuario_pode_cadastrar_peca_via_estoque(usuario),
+        "pode_editar_peca": _usuario_pode_editar_peca_via_estoque(usuario),
+    }
+
+
+def _negar_sem_permissao_estoque_visualizar(
+    usuario: dict[str, Any] | None,
+) -> tuple[Any, int] | None:
+    negado = _negar_sem_modulo(usuario, "estoque")
+    if negado:
+        return negado
+    if _usuario_pode_ver_estoque(usuario):
+        return None
+    return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+
+
+def _negar_sem_permissao_estoque_movimentar(
+    usuario: dict[str, Any] | None,
+) -> tuple[Any, int] | None:
+    negado = _negar_sem_permissao_estoque_visualizar(usuario)
+    if negado:
+        return negado
+    if _usuario_pode_movimentar_estoque(usuario):
+        return None
+    return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+
+
+def _negar_sem_permissao_estoque_pedidos(
+    usuario: dict[str, Any] | None,
+) -> tuple[Any, int] | None:
+    negado = _negar_sem_modulo(usuario, "estoque")
+    if negado:
+        return negado
+    if _usuario_pode_pedidos_estoque(usuario):
+        return None
+    return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
 
 
 def _enriquecer_info_lista_os(
@@ -6621,15 +6705,22 @@ def api_pecas_buscar():
 @app.route("/api/pecas", methods=["POST"])
 def api_pecas_cadastrar():
     usuario = _usuario_logado()
-    if not (
+    via_req = (
         _usuario_pode_editar_requisicoes_os(usuario)
         or _usuario_pode_editar_requisicoes_interna(usuario)
         or _usuario_pode_responder_requisicoes_os(usuario)
-    ):
+    )
+    via_estoque = _usuario_pode_cadastrar_peca_via_estoque(usuario)
+    if not via_req and not via_estoque:
         return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
-    negado = _negar_sem_permissao(usuario, "cadastros_pecas_criar")
-    if negado:
-        return negado
+    if via_req:
+        negado = _negar_sem_permissao(usuario, "cadastros_pecas_criar")
+        if negado:
+            return negado
+    else:
+        negado = _negar_sem_permissao_estoque_movimentar(usuario)
+        if negado:
+            return negado
     if not DATABASE_PRINCIPAL_PATH.is_file():
         return jsonify({"sucesso": False, "mensagem": "Banco de dados não encontrado."}), 500
     payload = request.get_json(silent=True) or {}
@@ -6667,6 +6758,13 @@ def api_pecas_cadastrar():
             peca = obter_peca_estoque(conn, novo_id) or obter_peca_catalogo(
                 conn, novo_id, incluir_preco=True
             )
+        if via_estoque and not via_req:
+            _registrar_acao_rastreio(
+                usuario,
+                "Estoque",
+                "Nova peça",
+                descricao or f"Peça #{novo_id}",
+            )
         return jsonify({
             "sucesso": True,
             "mensagem": "Peça cadastrada no cadastro da oficina.",
@@ -6681,12 +6779,22 @@ def api_pecas_cadastrar():
 @app.route("/api/pecas/<int:catalogo_id>", methods=["PUT"])
 def api_pecas_atualizar(catalogo_id: int):
     usuario = _usuario_logado()
-    if not (
+    via_req = (
         _usuario_pode_editar_requisicoes_os(usuario)
         or _usuario_pode_editar_requisicoes_interna(usuario)
         or _usuario_pode_responder_requisicoes_os(usuario)
-    ):
+    )
+    via_estoque = _usuario_pode_editar_peca_via_estoque(usuario)
+    if not via_req and not via_estoque:
         return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    if via_req:
+        negado = _negar_sem_permissao(usuario, "cadastros_pecas_editar")
+        if negado:
+            return negado
+    else:
+        negado = _negar_sem_permissao_estoque_movimentar(usuario)
+        if negado:
+            return negado
     if not DATABASE_PRINCIPAL_PATH.is_file():
         return jsonify({"sucesso": False, "mensagem": "Banco de dados não encontrado."}), 500
     payload = request.get_json(silent=True) or {}
@@ -6714,6 +6822,13 @@ def api_pecas_atualizar(catalogo_id: int):
                 definir_fornecedor_peca(conn, catalogo_id, str(fornecedor))
             peca = obter_peca_estoque(conn, catalogo_id) or obter_peca_catalogo(
                 conn, catalogo_id, incluir_preco=True
+            )
+        if via_estoque and not via_req:
+            _registrar_acao_rastreio(
+                usuario,
+                "Estoque",
+                "Editar peça",
+                descricao or f"Peça #{catalogo_id}",
             )
         return jsonify({
             "sucesso": True,
@@ -7224,12 +7339,7 @@ def api_requisicoes_liberar_estoque(req_id: int):
 @app.route("/api/estoque", methods=["GET"])
 def api_estoque_listar():
     usuario = _usuario_logado()
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
-    negado = _negar_sem_modulo(usuario, "estoque")
-    if negado:
-        return negado
-    negado = _negar_sem_permissao(usuario, "estoque_geral_visualizar")
+    negado = _negar_sem_permissao_estoque_visualizar(usuario)
     if negado:
         return negado
     termo = str(request.args.get("q") or "")
@@ -7249,6 +7359,7 @@ def api_estoque_listar():
             "itens": itens,
             "total": total,
             "integracao": integracao,
+            "permissoes": _permissoes_payload_estoque(usuario),
         })
     except sqlite3.Error as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 500
@@ -7257,8 +7368,9 @@ def api_estoque_listar():
 @app.route("/api/estoque/pendencias-atualizar", methods=["GET"])
 def api_estoque_pendencias_atualizar():
     usuario = _usuario_logado()
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_permissao_estoque_visualizar(usuario)
+    if negado:
+        return negado
     try:
         with conexao_principal() as conn:
             integrar_catalogo_ao_estoque(conn)
@@ -7271,8 +7383,9 @@ def api_estoque_pendencias_atualizar():
 @app.route("/api/estoque/pecas/<int:catalogo_id>", methods=["GET"])
 def api_estoque_peca_obter(catalogo_id: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_permissao_estoque_visualizar(usuario)
+    if negado:
+        return negado
     try:
         with conexao_principal() as conn:
             integrar_catalogo_ao_estoque(conn)
@@ -7287,13 +7400,18 @@ def api_estoque_peca_obter(catalogo_id: int):
 @app.route("/api/estoque/ordens/marcadores", methods=["GET"])
 def api_estoque_ordens_marcadores_listar():
     usuario = _usuario_logado()
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_permissao_estoque_pedidos(usuario)
+    if negado:
+        return negado
     try:
         with conexao_principal() as conn:
             integrar_catalogo_ao_estoque(conn)
             marcadores = listar_marcadores_ordens(conn)
-        return jsonify({"sucesso": True, "marcadores": marcadores})
+        return jsonify({
+            "sucesso": True,
+            "marcadores": marcadores,
+            "permissoes": _permissoes_payload_estoque(usuario),
+        })
     except sqlite3.Error as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 500
 
@@ -7301,17 +7419,25 @@ def api_estoque_ordens_marcadores_listar():
 @app.route("/api/estoque/ordens/marcadores", methods=["POST"])
 def api_estoque_ordens_marcadores_criar():
     usuario = _usuario_logado()
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_permissao_estoque_pedidos(usuario)
+    if negado:
+        return negado
     payload = request.get_json(silent=True) or {}
+    nome = str(payload.get("nome") or "").strip()
     try:
         with conexao_principal() as conn:
             marcador = criar_marcador_ordem(
                 conn,
-                nome=str(payload.get("nome") or ""),
+                nome=nome,
                 fornecedor_ref=str(payload.get("fornecedor_ref") or ""),
                 cor_orelha=str(payload.get("cor_orelha") or "#64748b"),
             )
+        _registrar_acao_rastreio(
+            usuario,
+            "Estoque",
+            "Criar marcador de pedido",
+            nome or f"Marcador #{marcador.get('id')}",
+        )
         return jsonify({"sucesso": True, "marcador": marcador})
     except ValueError as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400
@@ -7322,8 +7448,9 @@ def api_estoque_ordens_marcadores_criar():
 @app.route("/api/estoque/ordens/marcadores/<int:marcador_id>", methods=["PUT"])
 def api_estoque_ordens_marcadores_atualizar(marcador_id: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_permissao_estoque_pedidos(usuario)
+    if negado:
+        return negado
     payload = request.get_json(silent=True) or {}
     try:
         with conexao_principal() as conn:
@@ -7334,6 +7461,12 @@ def api_estoque_ordens_marcadores_atualizar(marcador_id: int):
                 fornecedor_ref=payload.get("fornecedor_ref") if "fornecedor_ref" in payload else None,
                 cor_orelha=payload.get("cor_orelha") if "cor_orelha" in payload else None,
             )
+        _registrar_acao_rastreio(
+            usuario,
+            "Estoque",
+            "Editar marcador de pedido",
+            str(marcador.get("nome") or marcador_id),
+        )
         return jsonify({"sucesso": True, "marcador": marcador})
     except ValueError as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400
@@ -7344,11 +7477,18 @@ def api_estoque_ordens_marcadores_atualizar(marcador_id: int):
 @app.route("/api/estoque/ordens/marcadores/<int:marcador_id>", methods=["DELETE"])
 def api_estoque_ordens_marcadores_remover(marcador_id: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_permissao_estoque_pedidos(usuario)
+    if negado:
+        return negado
     try:
         with conexao_principal() as conn:
             remover_marcador_ordem(conn, marcador_id)
+        _registrar_acao_rastreio(
+            usuario,
+            "Estoque",
+            "Remover marcador de pedido",
+            f"Marcador #{marcador_id}",
+        )
         return jsonify({"sucesso": True})
     except ValueError as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400
@@ -7359,8 +7499,9 @@ def api_estoque_ordens_marcadores_remover(marcador_id: int):
 @app.route("/api/estoque/ordens/marcadores/<int:marcador_id>/pecas-baixo", methods=["GET"])
 def api_estoque_ordens_pecas_baixo(marcador_id: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_permissao_estoque_pedidos(usuario)
+    if negado:
+        return negado
     try:
         with conexao_principal() as conn:
             marcadores = {m["id"]: m for m in listar_marcadores_ordens(conn)}
@@ -7376,8 +7517,9 @@ def api_estoque_ordens_pecas_baixo(marcador_id: int):
 @app.route("/api/estoque/ordens/marcadores/<int:marcador_id>/itens", methods=["GET"])
 def api_estoque_ordens_itens_listar(marcador_id: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_permissao_estoque_pedidos(usuario)
+    if negado:
+        return negado
     origem = request.args.get("origem")
     try:
         with conexao_principal() as conn:
@@ -7392,8 +7534,9 @@ def api_estoque_ordens_itens_listar(marcador_id: int):
 @app.route("/api/estoque/ordens/marcadores/<int:marcador_id>/itens", methods=["POST"])
 def api_estoque_ordens_itens_criar(marcador_id: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_permissao_estoque_pedidos(usuario)
+    if negado:
+        return negado
     payload = request.get_json(silent=True) or {}
     try:
         with conexao_principal() as conn:
@@ -7405,6 +7548,12 @@ def api_estoque_ordens_itens_criar(marcador_id: int):
                 origem=str(payload.get("origem") or "loja"),
                 observacao=str(payload.get("observacao") or ""),
             )
+        _registrar_acao_rastreio(
+            usuario,
+            "Estoque",
+            "Adicionar item ao pedido",
+            f"Marcador #{marcador_id} · peça #{item.get('catalogo_id') or payload.get('catalogo_id')}",
+        )
         return jsonify({"sucesso": True, "item": item})
     except ValueError as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400
@@ -7415,8 +7564,9 @@ def api_estoque_ordens_itens_criar(marcador_id: int):
 @app.route("/api/estoque/ordens/marcadores/<int:marcador_id>/importar-sugestoes", methods=["POST"])
 def api_estoque_ordens_importar_sugestoes(marcador_id: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_permissao_estoque_pedidos(usuario)
+    if negado:
+        return negado
     payload = request.get_json(silent=True) or {}
     try:
         with conexao_principal() as conn:
@@ -7425,6 +7575,12 @@ def api_estoque_ordens_importar_sugestoes(marcador_id: int):
                 marcador_id,
                 origem=str(payload.get("origem") or "loja"),
             )
+        _registrar_acao_rastreio(
+            usuario,
+            "Estoque",
+            "Importar sugestões no pedido",
+            f"Marcador #{marcador_id} · {len(itens)} item(ns)",
+        )
         return jsonify({"sucesso": True, "itens": itens})
     except ValueError as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400
@@ -7435,8 +7591,9 @@ def api_estoque_ordens_importar_sugestoes(marcador_id: int):
 @app.route("/api/estoque/ordens/itens/<int:item_id>", methods=["PUT"])
 def api_estoque_ordens_itens_atualizar(item_id: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_permissao_estoque_pedidos(usuario)
+    if negado:
+        return negado
     payload = request.get_json(silent=True) or {}
     try:
         with conexao_principal() as conn:
@@ -7446,6 +7603,12 @@ def api_estoque_ordens_itens_atualizar(item_id: int):
                 quantidade=payload.get("quantidade") if "quantidade" in payload else None,
                 observacao=payload.get("observacao") if "observacao" in payload else None,
             )
+        _registrar_acao_rastreio(
+            usuario,
+            "Estoque",
+            "Editar item do pedido",
+            f"Item #{item_id}",
+        )
         return jsonify({"sucesso": True, "item": item})
     except ValueError as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400
@@ -7456,11 +7619,18 @@ def api_estoque_ordens_itens_atualizar(item_id: int):
 @app.route("/api/estoque/ordens/itens/<int:item_id>", methods=["DELETE"])
 def api_estoque_ordens_itens_remover(item_id: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_permissao_estoque_pedidos(usuario)
+    if negado:
+        return negado
     try:
         with conexao_principal() as conn:
             remover_item_pedido_marcador(conn, item_id)
+        _registrar_acao_rastreio(
+            usuario,
+            "Estoque",
+            "Remover item do pedido",
+            f"Item #{item_id}",
+        )
         return jsonify({"sucesso": True})
     except ValueError as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400
@@ -7471,8 +7641,9 @@ def api_estoque_ordens_itens_remover(item_id: int):
 @app.route("/api/estoque/movimentos", methods=["GET"])
 def api_estoque_movimentos():
     usuario = _usuario_logado()
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_permissao_estoque_visualizar(usuario)
+    if negado:
+        return negado
     cat_id = request.args.get("catalogo_id")
     try:
         cid = int(cat_id) if cat_id not in (None, "") else None
@@ -7492,8 +7663,9 @@ def api_estoque_movimentar():
     usuario = _usuario_logado()
     if not usuario:
         return jsonify({"sucesso": False, "mensagem": "Faça login."}), 401
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_permissao_estoque_movimentar(usuario)
+    if negado:
+        return negado
     payload = request.get_json(silent=True) or {}
     senha = str(payload.get("senha") or "")
     ok, msg = _validar_senha_usuario_logado(usuario, senha)
@@ -7525,6 +7697,18 @@ def api_estoque_movimentar():
             if payload.get("fornecedor") is not None:
                 definir_fornecedor_peca(conn, catalogo_id, str(payload.get("fornecedor") or ""))
             remover_pendencia_atualizar_estoque(conn, catalogo_id)
+        tipo_rotulo = {
+            "entrada_manual": "Entrada manual",
+            "entrada_devolucao": "Devolução",
+            "saida_manual": "Saída manual",
+            "ajuste": "Ajuste",
+        }.get(tipo, tipo or "Movimentação")
+        _registrar_acao_rastreio(
+            usuario,
+            "Estoque",
+            tipo_rotulo,
+            f"Peça #{catalogo_id} · qtd {quantidade}",
+        )
         return jsonify({"sucesso": True, "saldo": saldo})
     except ValueError as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400

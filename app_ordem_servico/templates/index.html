@@ -6778,6 +6778,90 @@
             atualizarBotoesReqEditor(reqAtual);
         }
 
+        let estPermissoesCache = {};
+
+        function estoquePodeVisualizar() {
+            return osTemPermissao("estoque_geral_visualizar");
+        }
+        function estoquePodeMovimentar() {
+            return osTemPermissao("estoque_geral_movimentar");
+        }
+        function estoquePodePedidos() {
+            return osTemPermissao("estoque_geral_pedidos");
+        }
+        function estoquePodeCriarPeca() {
+            return estoquePodeMovimentar() || osTemPermissao("cadastros_pecas_criar");
+        }
+        function estoquePodeEditarPeca() {
+            return estoquePodeMovimentar() || osTemPermissao("cadastros_pecas_editar");
+        }
+        function estPodeVerSubaba(aba) {
+            if (aba === "consulta" || aba === "pendencias") return estoquePodeVisualizar();
+            if (aba === "ordens") return estoquePodePedidos();
+            return false;
+        }
+        function estoqueSubabaAtivaAtual() {
+            const ativo = document.querySelector("#estoqueSubTabs .nav-link.active");
+            if (!ativo) return "consulta";
+            if (ativo.id === "nav-estoque-ordens") return "ordens";
+            if (ativo.id === "nav-estoque-pendencias") return "pendencias";
+            return "consulta";
+        }
+        function garantirSubabaEstoqueAtiva() {
+            const ordem = ["consulta", "pendencias", "ordens"];
+            const atual = estoqueSubabaAtivaAtual();
+            if (estPodeVerSubaba(atual)) return true;
+            const idMap = {
+                consulta: "nav-estoque-consulta",
+                pendencias: "nav-estoque-pendencias",
+                ordens: "nav-estoque-ordens",
+            };
+            for (let i = 0; i < ordem.length; i++) {
+                if (estPodeVerSubaba(ordem[i])) {
+                    const btn = document.getElementById(idMap[ordem[i]]);
+                    if (btn && typeof bootstrap !== "undefined") {
+                        bootstrap.Tab.getOrCreateInstance(btn).show();
+                    }
+                    return true;
+                }
+            }
+            return false;
+        }
+        function estoquePainelAtivo() {
+            const pane = document.getElementById("pane-mod-estoque");
+            return !!(pane && pane.classList.contains("active"));
+        }
+        function aplicarPermissoesEstoqueUi() {
+            const mapaSub = {
+                "nav-estoque-consulta": "consulta",
+                "nav-estoque-pendencias": "pendencias",
+                "nav-estoque-ordens": "ordens",
+            };
+            document.querySelectorAll("#estoqueSubTabs .nav-item").forEach(function (li) {
+                const btn = li.querySelector(".nav-link");
+                const aba = btn && mapaSub[btn.id] ? mapaSub[btn.id] : "";
+                li.classList.toggle("d-none", aba ? !estPodeVerSubaba(aba) : true);
+            });
+            const btnNova = document.getElementById("btn-estoque-nova-peca");
+            if (btnNova) btnNova.classList.toggle("d-none", !estoquePodeCriarPeca());
+            const btnMov = document.getElementById("btn-estoque-movimentar");
+            if (btnMov) btnMov.classList.toggle("d-none", !estoquePodeMovimentar());
+            const btnEdit = document.getElementById("btn-estoque-editar");
+            if (btnEdit) btnEdit.classList.toggle("d-none", !estoquePodeEditarPeca());
+            const btnFichaAdd = document.getElementById("btn-estoque-ficha-add");
+            if (btnFichaAdd) btnFichaAdd.classList.toggle("d-none", !estoquePodePedidos());
+            const btnFichaEdit = document.getElementById("btn-estoque-ficha-editar");
+            if (btnFichaEdit) btnFichaEdit.classList.toggle("d-none", !estoquePodePedidos());
+            const btnFichaRem = document.getElementById("btn-estoque-ficha-remover");
+            if (btnFichaRem) btnFichaRem.classList.toggle("d-none", !estoquePodePedidos());
+            const btnPedAdd = document.getElementById("btn-estoque-pedido-add");
+            if (btnPedAdd) btnPedAdd.classList.toggle("d-none", !estoquePodePedidos());
+            const btnPedImp = document.getElementById("btn-estoque-pedido-importar");
+            if (btnPedImp) btnPedImp.classList.toggle("d-none", !estoquePodePedidos());
+            atualizarBarraEstoqueSelecao();
+            garantirSubabaEstoqueAtiva();
+        }
+
         function osPodeDevolverMecanico(os) {
             if (!listaPodeRetomar() || !os.mecanico_id) return false;
             const st = String(os.status || "").trim();
@@ -10927,9 +11011,23 @@
             try {
                 if (typeof aplicarPermissoesRequisicoesUi === "function") aplicarPermissoesRequisicoesUi();
             } catch (err) { console.error("perm requisicoes:", err); }
+            try {
+                if (typeof aplicarPermissoesEstoqueUi === "function") aplicarPermissoesEstoqueUi();
+            } catch (err) { console.error("perm estoque:", err); }
             if (requisicoesPainelAtivo() && typeof carregarRequisicoesPainel === "function") {
                 carregarRequisicoesPainel();
             }
+            if (estoquePainelAtivo() && typeof carregarPainelEstoque === "function") {
+                const sub = estoqueSubabaAtivaAtual();
+                if (sub === "ordens" && typeof carregarFicharioOrdens === "function") {
+                    carregarFicharioOrdens();
+                } else if (sub === "pendencias" && typeof carregarPendenciasAtualizarEstoque === "function") {
+                    carregarPendenciasAtualizarEstoque();
+                } else {
+                    carregarPainelEstoque();
+                }
+            }
+            if (estoquePodeVisualizar()) atualizarBadgePendenciasEstoque();
             const navPre = document.getElementById("nav-mod-pre-orcamentos");
             if (navPre && !mecanico) {
                 const mostrarPre = PERMISSOES_OS.perfil === "admin" || osModuloVisivel("pre_orcamentos");
@@ -10955,7 +11053,7 @@
             if (navEstoque) {
                 const showEst = PERMISSOES_OS.controle_abas_ativo
                     ? osModuloVisivel("estoque")
-                    : PERMISSOES_OS.pode_atribuir_mecanico;
+                    : estoquePodeVisualizar() || estoquePodeMovimentar() || estoquePodePedidos();
                 navEstoque.classList.toggle("d-none", !showEst);
             }
             const navFotosOs = document.getElementById("nav-mod-fotos-os");
@@ -16988,8 +17086,10 @@
             const btnMov = document.getElementById("btn-estoque-movimentar");
             const btnEdit = document.getElementById("btn-estoque-editar");
             const tem = !!(estoquePecaSelecionada && estoquePecaSelecionada.id);
-            if (btnMov) btnMov.disabled = !tem;
-            if (btnEdit) btnEdit.disabled = !tem;
+            const podeMov = estoquePodeMovimentar();
+            const podeEdit = estoquePodeEditarPeca();
+            if (btnMov) btnMov.disabled = !tem || !podeMov;
+            if (btnEdit) btnEdit.disabled = !tem || !podeEdit;
             if (hint) {
                 hint.textContent = tem
                     ? "Selecionada: " + (estoquePecaSelecionada.descricao || "")
@@ -17136,6 +17236,10 @@
             const accordion = document.getElementById("estoque-accordion");
             const tbodyMov = document.getElementById("tbody-estoque-mov");
             if (!accordion) return;
+            if (!garantirSubabaEstoqueAtiva() || !estoquePodeVisualizar()) {
+                accordion.innerHTML = '<p class="text-muted small mb-0">Sem permissão para consultar estoque.</p>';
+                return;
+            }
             const q = (document.getElementById("estoque-busca") || {}).value || "";
             const baixo = document.getElementById("estoque-filtro-baixo") && document.getElementById("estoque-filtro-baixo").checked;
             const selId = estoquePecaSelecionada ? estoquePecaSelecionada.id : null;
@@ -17148,6 +17252,8 @@
                     accordion.innerHTML = '<p class="text-muted small mb-0">Sem permissão.</p>';
                     return;
                 }
+                if (data.permissoes) estPermissoesCache = data.permissoes;
+                try { aplicarPermissoesEstoqueUi(); } catch (e) { /* ignora */ }
                 const resumoEl = document.getElementById("estoque-resumo-integracao");
                 if (resumoEl && data.integracao) {
                     const tot = data.total != null ? data.total : data.integracao.total_pecas;
@@ -17193,6 +17299,10 @@
         }
 
         function abrirModalMovimentarEstoque(anchorEl) {
+            if (!estoquePodeMovimentar()) {
+                osToast("Sem permissão para movimentar estoque.", "info");
+                return;
+            }
             if (!estoquePecaSelecionada || !estoquePecaSelecionada.id) {
                 osToast("Selecione uma peça na lista.", "aviso");
                 return;
@@ -17218,6 +17328,10 @@
         }
 
         async function confirmarMovimentacaoEstoque() {
+            if (!estoquePodeMovimentar()) {
+                osToast("Sem permissão para movimentar estoque.", "info");
+                return;
+            }
             if (!estoquePecaSelecionada || !estoquePecaSelecionada.id) return;
             const tipo = (document.getElementById("modal-estoque-mov-tipo") || {}).value || "entrada_manual";
             const qtd = (document.getElementById("modal-estoque-mov-qtd") || {}).value || "";
@@ -17257,6 +17371,10 @@
         async function atualizarBadgePendenciasEstoque(totalOpt) {
             const badge = document.getElementById("badge-estoque-pendencias");
             if (!badge) return;
+            if (!estoquePodeVisualizar()) {
+                badge.classList.add("d-none");
+                return;
+            }
             let total = totalOpt;
             if (total == null) {
                 try {
@@ -17278,6 +17396,10 @@
         async function carregarPendenciasAtualizarEstoque() {
             const tbody = document.getElementById("tbody-estoque-pendencias");
             if (!tbody) return;
+            if (!estoquePodeVisualizar()) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Sem permissão.</td></tr>';
+                return;
+            }
             tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Carregando...</td></tr>';
             try {
                 const resp = await fetch("/api/estoque/pendencias-atualizar", FETCH_OPTS);
@@ -17293,6 +17415,7 @@
                     return;
                 }
                 tbody.innerHTML = "";
+                const podeAtualizar = estoquePodeMovimentar();
                 itens.forEach(function (p) {
                     const tr = document.createElement("tr");
                     const origem = p.ultima_os
@@ -17304,8 +17427,10 @@
                         "<td>" + escHtml(p.estoque_atual_fmt || "0") + "</td>" +
                         "<td class=\"small\">" + escHtml(origem) + "</td>" +
                         "<td class=\"small text-muted\">" + escHtml(p.atualizado_em || "") + "</td>" +
-                        '<td class="text-end"><button type="button" class="btn btn-sm btn-primary btn-estoque-pend-atualizar">' +
-                        '<i class="bi bi-arrow-left-right"></i> Atualizar</button></td>';
+                        (podeAtualizar
+                            ? '<td class="text-end"><button type="button" class="btn btn-sm btn-primary btn-estoque-pend-atualizar">' +
+                            '<i class="bi bi-arrow-left-right"></i> Atualizar</button></td>'
+                            : '<td class="text-muted small">—</td>');
                     const btnAtualizar = tr.querySelector(".btn-estoque-pend-atualizar");
                     if (btnAtualizar) {
                         btnAtualizar.addEventListener("click", function () {
@@ -17365,6 +17490,10 @@
         }
 
         async function abrirModalEditarPecaEstoque() {
+            if (!estoquePodeEditarPeca()) {
+                osToast("Sem permissão para editar peça.", "info");
+                return;
+            }
             if (!estoquePecaSelecionada || !estoquePecaSelecionada.id) {
                 osToast("Selecione uma peça na lista.", "aviso");
                 return;
@@ -17381,6 +17510,11 @@
 
         async function salvarModalPecaEstoque() {
             const idVal = (document.getElementById("modal-estoque-peca-id") || {}).value || "";
+            const editar = !!idVal;
+            if (editar ? !estoquePodeEditarPeca() : !estoquePodeCriarPeca()) {
+                osToast("Sem permissão para salvar peça.", "info");
+                return;
+            }
             const payload = {
                 descricao: (document.getElementById("modal-estoque-peca-desc") || {}).value.trim(),
                 codigo_barras: (document.getElementById("modal-estoque-peca-codigo") || {}).value.trim(),
@@ -17392,7 +17526,6 @@
                 osToast("Informe a descrição.", "aviso");
                 return;
             }
-            const editar = !!idVal;
             if (!editar) {
                 payload.estoque_inicial = (document.getElementById("modal-estoque-peca-inicial") || {}).value.trim();
             }
@@ -17472,10 +17605,13 @@
         }
 
         async function carregarFicharioOrdens() {
+            if (!estoquePodePedidos()) return;
             try {
                 const resp = await fetch("/api/estoque/ordens/marcadores", FETCH_OPTS);
                 const data = await resp.json();
                 if (!resp.ok || !data.sucesso) return;
+                if (data.permissoes) estPermissoesCache = data.permissoes;
+                try { aplicarPermissoesEstoqueUi(); } catch (e) { /* ignora */ }
                 estoqueOrdensMarcadores = data.marcadores || [];
                 if (!estoqueOrdensMarcadorAtivoId && estoqueOrdensMarcadores.length) {
                     estoqueOrdensMarcadorAtivoId = estoqueOrdensMarcadores[0].id;
@@ -17496,6 +17632,7 @@
         function renderizarTabelaItensPedido(itens) {
             const tbody = document.getElementById("tbody-estoque-pedido-itens");
             if (!tbody) return;
+            const podePed = estoquePodePedidos();
             if (!itens.length) {
                 const msg = estoqueOrdensOrigemAtiva === "cliente"
                     ? "Nenhum item de cliente neste pedido."
@@ -17511,12 +17648,15 @@
                     "<td>" + escHtml(it.descricao || "") + "</td>" +
                     "<td>" + escHtml(it.quantidade_fmt || "0") + "</td>" +
                     "<td class=\"small\">" + escHtml(it.observacao || "—") + "</td>" +
-                    '<td class="text-end text-nowrap">' +
-                    '<button type="button" class="btn btn-sm btn-link p-0 me-2 btn-estoque-pedido-edit" data-id="' + escHtml(it.id) + '" title="Editar"><i class="bi bi-pencil"></i></button>' +
-                    '<button type="button" class="btn btn-sm btn-link p-0 text-danger btn-estoque-pedido-del" data-id="' + escHtml(it.id) + '" title="Remover"><i class="bi bi-trash"></i></button>' +
-                    "</td>";
+                    (podePed
+                        ? '<td class="text-end text-nowrap">' +
+                        '<button type="button" class="btn btn-sm btn-link p-0 me-2 btn-estoque-pedido-edit" data-id="' + escHtml(it.id) + '" title="Editar"><i class="bi bi-pencil"></i></button>' +
+                        '<button type="button" class="btn btn-sm btn-link p-0 text-danger btn-estoque-pedido-del" data-id="' + escHtml(it.id) + '" title="Remover"><i class="bi bi-trash"></i></button>' +
+                        "</td>"
+                        : "<td class=\"text-muted small\">—</td>");
                 tbody.appendChild(tr);
             });
+            if (!podePed) return;
             tbody.querySelectorAll(".btn-estoque-pedido-edit").forEach(function (btn) {
                 btn.addEventListener("click", function () {
                     const item = (estoqueOrdensItensCache[estoqueOrdensOrigemAtiva] || []).find(function (x) {
@@ -17539,7 +17679,10 @@
             });
             const btnImport = document.getElementById("btn-estoque-pedido-importar");
             if (btnImport) {
-                btnImport.classList.toggle("d-none", estoqueOrdensOrigemAtiva !== "loja");
+                btnImport.classList.toggle(
+                    "d-none",
+                    estoqueOrdensOrigemAtiva !== "loja" || !estoquePodePedidos()
+                );
             }
             renderizarTabelaItensPedido(estoqueOrdensItensCache[estoqueOrdensOrigemAtiva] || []);
         }
@@ -17611,6 +17754,7 @@
                     tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Nenhuma sugestão no momento.</td></tr>';
                     return;
                 }
+                const podePed = estoquePodePedidos();
                 tbody.innerHTML = "";
                 pecas.forEach(function (p) {
                     const tr = document.createElement("tr");
@@ -17620,11 +17764,14 @@
                         "<td>" + escHtml(p.estoque_atual_fmt || "0") + "</td>" +
                         "<td>" + escHtml(p.estoque_minimo_fmt || "0") + "</td>" +
                         "<td>" + escHtml(p.sugerir_pedido_fmt || "0") + "</td>" +
-                        '<td class="text-end">' +
-                        '<button type="button" class="btn btn-sm btn-outline-success py-0 btn-estoque-sug-add" data-id="' + escHtml(p.id) + '" title="Adicionar à loja">+</button>' +
-                        "</td>";
+                        (podePed
+                            ? '<td class="text-end">' +
+                            '<button type="button" class="btn btn-sm btn-outline-success py-0 btn-estoque-sug-add" data-id="' + escHtml(p.id) + '" title="Adicionar à loja">+</button>' +
+                            "</td>"
+                            : '<td class="text-muted small">—</td>');
                     tbody.appendChild(tr);
                 });
+                if (!podePed) return;
                 tbody.querySelectorAll(".btn-estoque-sug-add").forEach(function (btn) {
                     btn.addEventListener("click", function () {
                         const peca = estoqueOrdensSugestoesCache.find(function (x) {
@@ -17639,6 +17786,10 @@
         }
 
         async function adicionarPecaAoPedidoMarcador(catalogoId, quantidade, origem, observacao) {
+            if (!estoquePodePedidos()) {
+                osToast("Sem permissão para pedidos de estoque.", "info");
+                return;
+            }
             if (!estoqueOrdensMarcadorAtivoId) return;
             try {
                 const resp = await fetch(
@@ -17665,6 +17816,10 @@
         }
 
         function abrirModalItemPedido(item) {
+            if (!estoquePodePedidos()) {
+                osToast("Sem permissão para pedidos de estoque.", "info");
+                return;
+            }
             const modalEl = document.getElementById("modal-estoque-pedido-item");
             const titulo = document.getElementById("modal-estoque-pedido-item-titulo");
             const idInp = document.getElementById("modal-estoque-pedido-item-id");
@@ -17706,6 +17861,10 @@
         }
 
         async function salvarModalItemPedido() {
+            if (!estoquePodePedidos()) {
+                osToast("Sem permissão para pedidos de estoque.", "info");
+                return;
+            }
             if (!estoqueOrdensMarcadorAtivoId) return;
             const idVal = (document.getElementById("modal-estoque-pedido-item-id") || {}).value || "";
             const qtd = (document.getElementById("modal-estoque-pedido-item-qtd") || {}).value || "1";
@@ -17743,6 +17902,10 @@
         }
 
         async function removerItemPedidoMarcador(itemId) {
+            if (!estoquePodePedidos()) {
+                osToast("Sem permissão para pedidos de estoque.", "info");
+                return;
+            }
             if (!itemId) return;
             const ok = await osConfirm("Remover este item do pedido?", { titulo: "Remover item" });
             if (!ok) return;
@@ -17761,6 +17924,10 @@
         }
 
         async function importarSugestoesPedidoMarcador() {
+            if (!estoquePodePedidos()) {
+                osToast("Sem permissão para pedidos de estoque.", "info");
+                return;
+            }
             if (!estoqueOrdensMarcadorAtivoId) return;
             try {
                 const resp = await fetch(
@@ -17782,6 +17949,10 @@
         }
 
         function abrirModalMarcadorOrdem(marcador) {
+            if (!estoquePodePedidos()) {
+                osToast("Sem permissão para pedidos de estoque.", "info");
+                return;
+            }
             const modalEl = document.getElementById("modal-estoque-marcador");
             const titulo = document.getElementById("modal-estoque-marcador-titulo");
             const idInp = document.getElementById("modal-estoque-marcador-id");
@@ -17802,6 +17973,10 @@
         }
 
         async function salvarModalMarcadorOrdem() {
+            if (!estoquePodePedidos()) {
+                osToast("Sem permissão para pedidos de estoque.", "info");
+                return;
+            }
             const idVal = (document.getElementById("modal-estoque-marcador-id") || {}).value || "";
             const payload = {
                 nome: (document.getElementById("modal-estoque-marcador-nome") || {}).value.trim(),
@@ -17841,6 +18016,10 @@
         }
 
         async function removerMarcadorOrdemAtivo() {
+            if (!estoquePodePedidos()) {
+                osToast("Sem permissão para pedidos de estoque.", "info");
+                return;
+            }
             if (!estoqueOrdensMarcadorAtivoId) return;
             const marcador = estoqueOrdensMarcadores.find(function (m) {
                 return String(m.id) === String(estoqueOrdensMarcadorAtivoId);
@@ -17994,7 +18173,8 @@
         }
         if (navModEstoque) {
             navModEstoque.addEventListener("shown.bs.tab", function () {
-                atualizarBadgePendenciasEstoque();
+                aplicarPermissoesEstoqueUi();
+                if (estoquePodeVisualizar()) atualizarBadgePendenciasEstoque();
                 const consultaPane = document.getElementById("pane-estoque-consulta");
                 if (consultaPane && consultaPane.classList.contains("active")) {
                     aoMostrarEstoqueConsulta();
@@ -18015,6 +18195,10 @@
         const btnEstoqueNova = document.getElementById("btn-estoque-nova-peca");
         if (btnEstoqueNova) {
             btnEstoqueNova.addEventListener("click", function () {
+                if (!estoquePodeCriarPeca()) {
+                    osToast("Sem permissão para criar peça.", "info");
+                    return;
+                }
                 abrirModalPecaEstoque("nova");
             });
         }
@@ -18049,11 +18233,21 @@
         }
         const btnEstoqueFichaAdd = document.getElementById("btn-estoque-ficha-add");
         if (btnEstoqueFichaAdd) {
-            btnEstoqueFichaAdd.addEventListener("click", function () { abrirModalMarcadorOrdem(null); });
+            btnEstoqueFichaAdd.addEventListener("click", function () {
+                if (!estoquePodePedidos()) {
+                    osToast("Sem permissão para pedidos de estoque.", "info");
+                    return;
+                }
+                abrirModalMarcadorOrdem(null);
+            });
         }
         const btnEstoqueFichaEdit = document.getElementById("btn-estoque-ficha-editar");
         if (btnEstoqueFichaEdit) {
             btnEstoqueFichaEdit.addEventListener("click", function () {
+                if (!estoquePodePedidos()) {
+                    osToast("Sem permissão para pedidos de estoque.", "info");
+                    return;
+                }
                 const m = estoqueOrdensMarcadores.find(function (x) {
                     return String(x.id) === String(estoqueOrdensMarcadorAtivoId);
                 });
@@ -18061,7 +18255,15 @@
             });
         }
         const btnEstoqueFichaRem = document.getElementById("btn-estoque-ficha-remover");
-        if (btnEstoqueFichaRem) btnEstoqueFichaRem.addEventListener("click", removerMarcadorOrdemAtivo);
+        if (btnEstoqueFichaRem) {
+            btnEstoqueFichaRem.addEventListener("click", function () {
+                if (!estoquePodePedidos()) {
+                    osToast("Sem permissão para pedidos de estoque.", "info");
+                    return;
+                }
+                removerMarcadorOrdemAtivo();
+            });
+        }
         const btnModalMarcadorOk = document.getElementById("modal-estoque-marcador-salvar");
         if (btnModalMarcadorOk) btnModalMarcadorOk.addEventListener("click", salvarModalMarcadorOrdem);
 
@@ -18073,10 +18275,24 @@
         });
         const btnPedidoAdd = document.getElementById("btn-estoque-pedido-add");
         if (btnPedidoAdd) {
-            btnPedidoAdd.addEventListener("click", function () { abrirModalItemPedido(null); });
+            btnPedidoAdd.addEventListener("click", function () {
+                if (!estoquePodePedidos()) {
+                    osToast("Sem permissão para pedidos de estoque.", "info");
+                    return;
+                }
+                abrirModalItemPedido(null);
+            });
         }
         const btnPedidoImport = document.getElementById("btn-estoque-pedido-importar");
-        if (btnPedidoImport) btnPedidoImport.addEventListener("click", importarSugestoesPedidoMarcador);
+        if (btnPedidoImport) {
+            btnPedidoImport.addEventListener("click", function () {
+                if (!estoquePodePedidos()) {
+                    osToast("Sem permissão para pedidos de estoque.", "info");
+                    return;
+                }
+                importarSugestoesPedidoMarcador();
+            });
+        }
 
         const inpPedidoBusca = document.getElementById("modal-estoque-pedido-item-busca");
         if (inpPedidoBusca) {
