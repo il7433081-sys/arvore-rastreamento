@@ -2538,7 +2538,6 @@ def _usuario_pode_atribuir_mecanico(usuario: dict[str, Any] | None) -> bool:
         "agendamentos_",
         "pre_orcamentos_",
         "ordem_os_",
-        "requisicoes_",
         "estoque_",
         "cadastros_",
     )
@@ -2549,14 +2548,20 @@ def _usuario_pode_atribuir_mecanico(usuario: dict[str, Any] | None) -> bool:
 
 
 def _usuario_pode_gerenciar_requisicoes(usuario: dict[str, Any] | None) -> bool:
+    """Qualquer ação de responsável em requisições além de só visualizar."""
     if _usuario_e_mecanico(usuario):
         return False
     if _usuario_e_admin(usuario):
         return True
-    if not _usuario_acesso_restrito(usuario):
-        return _usuario_pode_atribuir_mecanico(usuario)
-    gran = _permissoes_granulares_usuario(usuario)
-    return modulo_tem_alguma_permissao(gran, ("requisicoes_",))
+    return (
+        _usuario_pode_criar_requisicoes_os(usuario)
+        or _usuario_pode_editar_requisicoes_os(usuario)
+        or _usuario_pode_responder_requisicoes_os(usuario)
+        or _usuario_pode_liberar_estoque_requisicoes_os(usuario)
+        or _usuario_pode_criar_requisicoes_interna(usuario)
+        or _usuario_pode_editar_requisicoes_interna(usuario)
+        or _usuario_pode_finalizar_requisicoes_interna(usuario)
+    )
 
 
 def _usuario_pode_buscar_catalogo_pre_orcamentos(usuario: dict[str, Any] | None) -> bool:
@@ -2639,15 +2644,26 @@ def _usuario_pode_usar_catalogo_pecas(usuario: dict[str, Any] | None) -> bool:
     if usuario is None:
         return not _exigir_login_efetivo()
     return (
-        _usuario_e_mecanico(usuario)
-        or _usuario_pode_gerenciar_requisicoes(usuario)
+        (_usuario_e_mecanico(usuario) and (
+            _usuario_pode_criar_requisicoes_os(usuario)
+            or _usuario_pode_editar_requisicoes_os(usuario)
+        ))
+        or _usuario_pode_criar_requisicoes_os(usuario)
+        or _usuario_pode_editar_requisicoes_os(usuario)
+        or _usuario_pode_responder_requisicoes_os(usuario)
+        or _usuario_pode_criar_requisicoes_interna(usuario)
+        or _usuario_pode_editar_requisicoes_interna(usuario)
         or _usuario_pode_buscar_catalogo_pre_orcamentos(usuario)
     )
 
 
 def _usuario_pode_usar_catalogo_servicos(usuario: dict[str, Any] | None) -> bool:
     return (
-        _usuario_pode_gerenciar_requisicoes(usuario)
+        _usuario_pode_criar_requisicoes_os(usuario)
+        or _usuario_pode_editar_requisicoes_os(usuario)
+        or _usuario_pode_responder_requisicoes_os(usuario)
+        or _usuario_pode_criar_requisicoes_interna(usuario)
+        or _usuario_pode_editar_requisicoes_interna(usuario)
         or _usuario_pode_buscar_catalogo_pre_orcamentos(usuario)
     )
 
@@ -2899,6 +2915,192 @@ def _usuario_pode_baixar_fotos_os(usuario: dict[str, Any] | None) -> bool:
 
 def _usuario_pode_marcar_enviado_fotos_os(usuario: dict[str, Any] | None) -> bool:
     return _usuario_pode_acao_fotos_os(usuario, "fotos_os_geral_marcar_enviado")
+
+
+def _usuario_pode_ver_requisicoes_os_mecanico(usuario: dict[str, Any] | None) -> bool:
+    if not _usuario_e_mecanico(usuario):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return (
+        _usuario_tem_permissao(usuario, "requisicoes_os_visualizar")
+        or _usuario_tem_permissao(usuario, "requisicoes_os_criar")
+        or _usuario_tem_permissao(usuario, "requisicoes_os_editar")
+        or _usuario_tem_permissao(usuario, "requisicoes_os_enviar")
+    )
+
+
+def _usuario_pode_ver_requisicoes_os_responsavel(usuario: dict[str, Any] | None) -> bool:
+    if _usuario_e_mecanico(usuario):
+        return False
+    if not _usuario_pode_ver_todas_os(usuario):
+        return False
+    if not _usuario_modulo_visivel(usuario, "requisicao"):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return _usuario_tem_permissao(usuario, "requisicoes_os_visualizar")
+
+
+def _usuario_pode_ver_requisicoes_interna(usuario: dict[str, Any] | None) -> bool:
+    if _usuario_e_mecanico(usuario):
+        return False
+    if not _usuario_pode_ver_todas_os(usuario):
+        return False
+    if not _usuario_modulo_visivel(usuario, "requisicao"):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return _usuario_tem_permissao(usuario, "requisicoes_interna_visualizar")
+
+
+def _usuario_pode_acao_req_os(
+    usuario: dict[str, Any] | None,
+    *chaves: str,
+) -> bool:
+    if _usuario_e_mecanico(usuario):
+        if not _usuario_pode_ver_requisicoes_os_mecanico(usuario):
+            return False
+        if not usuario or not _usuario_acesso_restrito(usuario):
+            return True
+        return modulo_tem_alguma_permissao(
+            _permissoes_granulares_usuario(usuario),
+            chaves,
+        )
+    if not _usuario_pode_ver_requisicoes_os_responsavel(usuario):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return modulo_tem_alguma_permissao(
+        _permissoes_granulares_usuario(usuario),
+        chaves,
+    )
+
+
+def _usuario_pode_acao_req_interna(
+    usuario: dict[str, Any] | None,
+    *chaves: str,
+) -> bool:
+    if _usuario_e_mecanico(usuario):
+        return False
+    if not _usuario_pode_ver_requisicoes_interna(usuario):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return modulo_tem_alguma_permissao(
+        _permissoes_granulares_usuario(usuario),
+        chaves,
+    )
+
+
+def _usuario_pode_criar_requisicoes_os(usuario: dict[str, Any] | None) -> bool:
+    return _usuario_pode_acao_req_os(usuario, "requisicoes_os_criar")
+
+
+def _usuario_pode_editar_requisicoes_os(usuario: dict[str, Any] | None) -> bool:
+    return _usuario_pode_acao_req_os(usuario, "requisicoes_os_editar")
+
+
+def _usuario_pode_enviar_requisicoes_os(usuario: dict[str, Any] | None) -> bool:
+    if not _usuario_e_mecanico(usuario):
+        return False
+    return _usuario_pode_acao_req_os(usuario, "requisicoes_os_enviar")
+
+
+def _usuario_pode_responder_requisicoes_os(usuario: dict[str, Any] | None) -> bool:
+    if _usuario_e_mecanico(usuario):
+        return False
+    return _usuario_pode_acao_req_os(usuario, "requisicoes_os_responder")
+
+
+def _usuario_pode_liberar_estoque_requisicoes_os(usuario: dict[str, Any] | None) -> bool:
+    if _usuario_e_mecanico(usuario):
+        return False
+    return _usuario_pode_acao_req_os(usuario, "requisicoes_os_liberar_estoque")
+
+
+def _usuario_pode_criar_requisicoes_interna(usuario: dict[str, Any] | None) -> bool:
+    return _usuario_pode_acao_req_interna(usuario, "requisicoes_interna_criar")
+
+
+def _usuario_pode_editar_requisicoes_interna(usuario: dict[str, Any] | None) -> bool:
+    return _usuario_pode_acao_req_interna(usuario, "requisicoes_interna_editar")
+
+
+def _usuario_pode_finalizar_requisicoes_interna(usuario: dict[str, Any] | None) -> bool:
+    return _usuario_pode_acao_req_interna(usuario, "requisicoes_interna_finalizar_interna")
+
+
+def _usuario_pode_listar_requisicoes_aba(
+    usuario: dict[str, Any] | None,
+    aba: str | None,
+) -> bool:
+    aba_norm = (aba or "ativas").strip().lower()
+    if _usuario_e_mecanico(usuario):
+        if aba_norm == "internas":
+            return False
+        return _usuario_pode_ver_requisicoes_os_mecanico(usuario)
+    if aba_norm == "internas":
+        return _usuario_pode_ver_requisicoes_interna(usuario)
+    return _usuario_pode_ver_requisicoes_os_responsavel(usuario)
+
+
+def _usuario_pode_salvar_requisicao(
+    usuario: dict[str, Any] | None,
+    *,
+    tipo_requisicao: str,
+    req_id: int | None,
+    como_responsavel: bool,
+) -> bool:
+    tipo = str(tipo_requisicao or "os").strip().lower()
+    if tipo == "interna":
+        if _usuario_e_mecanico(usuario):
+            return False
+        if req_id:
+            return _usuario_pode_editar_requisicoes_interna(usuario)
+        return _usuario_pode_criar_requisicoes_interna(usuario)
+    if _usuario_e_mecanico(usuario):
+        if req_id:
+            return _usuario_pode_editar_requisicoes_os(usuario)
+        return _usuario_pode_criar_requisicoes_os(usuario)
+    if como_responsavel:
+        if req_id:
+            return _usuario_pode_editar_requisicoes_os(usuario)
+        return _usuario_pode_criar_requisicoes_os(usuario)
+    return False
+
+
+def _usuario_pode_ver_requisicao(
+    usuario: dict[str, Any] | None,
+    *,
+    tipo_requisicao: str,
+) -> bool:
+    tipo = str(tipo_requisicao or "os").strip().lower()
+    if tipo == "interna":
+        return _usuario_pode_ver_requisicoes_interna(usuario)
+    if _usuario_e_mecanico(usuario):
+        return _usuario_pode_ver_requisicoes_os_mecanico(usuario)
+    return _usuario_pode_ver_requisicoes_os_responsavel(usuario)
+
+
+def _permissoes_payload_requisicoes(usuario: dict[str, Any] | None) -> dict[str, bool]:
+    eh_mec = _usuario_e_mecanico(usuario)
+    return {
+        "pode_visualizar_os": (
+            _usuario_pode_ver_requisicoes_os_mecanico(usuario)
+            if eh_mec
+            else _usuario_pode_ver_requisicoes_os_responsavel(usuario)
+        ),
+        "pode_visualizar_interna": _usuario_pode_ver_requisicoes_interna(usuario),
+        "pode_criar_os": _usuario_pode_criar_requisicoes_os(usuario),
+        "pode_editar_os": _usuario_pode_editar_requisicoes_os(usuario),
+        "pode_enviar_os": _usuario_pode_enviar_requisicoes_os(usuario),
+        "pode_responder_os": _usuario_pode_responder_requisicoes_os(usuario),
+        "pode_liberar_estoque_os": _usuario_pode_liberar_estoque_requisicoes_os(usuario),
+        "pode_criar_interna": _usuario_pode_criar_requisicoes_interna(usuario),
+        "pode_editar_interna": _usuario_pode_editar_requisicoes_interna(usuario),
+        "pode_finalizar_interna": _usuario_pode_finalizar_requisicoes_interna(usuario),
+    }
 
 
 def _enriquecer_info_lista_os(
@@ -6403,7 +6605,9 @@ def api_pecas_buscar():
     if len(termo) < 2:
         return jsonify({"sucesso": True, "pecas": []})
     incluir_preco = (
-        _usuario_pode_gerenciar_requisicoes(usuario)
+        _usuario_pode_editar_requisicoes_os(usuario)
+        or _usuario_pode_responder_requisicoes_os(usuario)
+        or _usuario_pode_editar_requisicoes_interna(usuario)
         or _usuario_pode_ver_preco_catalogo_pre_orcamentos(usuario)
     )
     try:
@@ -6417,7 +6621,11 @@ def api_pecas_buscar():
 @app.route("/api/pecas", methods=["POST"])
 def api_pecas_cadastrar():
     usuario = _usuario_logado()
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
+    if not (
+        _usuario_pode_editar_requisicoes_os(usuario)
+        or _usuario_pode_editar_requisicoes_interna(usuario)
+        or _usuario_pode_responder_requisicoes_os(usuario)
+    ):
         return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
     negado = _negar_sem_permissao(usuario, "cadastros_pecas_criar")
     if negado:
@@ -6473,7 +6681,11 @@ def api_pecas_cadastrar():
 @app.route("/api/pecas/<int:catalogo_id>", methods=["PUT"])
 def api_pecas_atualizar(catalogo_id: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
+    if not (
+        _usuario_pode_editar_requisicoes_os(usuario)
+        or _usuario_pode_editar_requisicoes_interna(usuario)
+        or _usuario_pode_responder_requisicoes_os(usuario)
+    ):
         return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
     if not DATABASE_PRINCIPAL_PATH.is_file():
         return jsonify({"sucesso": False, "mensagem": "Banco de dados não encontrado."}), 500
@@ -6608,6 +6820,11 @@ def api_requisicoes_listar():
         return jsonify({"sucesso": False, "mensagem": "Faça login."}), 401
     numero_os = request.args.get("numero_os")
     aba = (request.args.get("aba") or "").strip().lower() or None
+    negado = _negar_sem_modulo(usuario, "requisicao")
+    if negado:
+        return negado
+    if not _usuario_pode_listar_requisicoes_aba(usuario, aba):
+        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
     try:
         os_filtro = int(numero_os) if numero_os not in (None, "") else None
     except ValueError:
@@ -6624,13 +6841,15 @@ def api_requisicoes_listar():
                 _enriquecer_pre_requisicao_mecanico(
                     conn, lista, mecanico_id=int(usuario["id"])
                 )
-            elif _usuario_pode_gerenciar_requisicoes(usuario):
-                lista = listar_requisicoes(conn, visao=visao, numero_os=os_filtro, aba=aba)
             else:
-                return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+                lista = listar_requisicoes(conn, visao=visao, numero_os=os_filtro, aba=aba)
         for req in lista:
             _enriquecer_requisicao_catalogo(req, visao=visao)
-        return jsonify({"sucesso": True, "requisicoes": lista})
+        return jsonify({
+            "sucesso": True,
+            "requisicoes": lista,
+            "permissoes": _permissoes_payload_requisicoes(usuario),
+        })
     except sqlite3.Error as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 500
 
@@ -6654,12 +6873,17 @@ def api_requisicoes_obter(req_id: int):
                 ).fetchone()
                 if row is None:
                     return jsonify({"sucesso": False, "mensagem": "Requisição não encontrada."}), 404
-            elif not _usuario_pode_gerenciar_requisicoes(usuario):
-                return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
             req = obter_requisicao(conn, req_id, visao=visao)
             if req is None:
                 return jsonify({"sucesso": False, "mensagem": "Requisição não encontrada."}), 404
+            tipo_req = str(req.get("tipo_requisicao") or "os").strip().lower()
+            if not _usuario_e_mecanico(usuario) and not _usuario_pode_ver_requisicao(
+                usuario, tipo_requisicao=tipo_req
+            ):
+                return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
             if _usuario_e_mecanico(usuario):
+                if int(req.get("mecanico_id") or 0) != int(usuario["id"]):
+                    return jsonify({"sucesso": False, "mensagem": "Requisição não encontrada."}), 404
                 pre_st, msg = _bloquear_requisicao_os_mecanico_pre(
                     conn, req, mecanico_id=int(usuario["id"])
                 )
@@ -6672,7 +6896,11 @@ def api_requisicoes_obter(req_id: int):
                         "requisicao_id": req_id,
                     }), 403
             _enriquecer_requisicao_catalogo(req, visao=visao)
-        return jsonify({"sucesso": True, "requisicao": req})
+        return jsonify({
+            "sucesso": True,
+            "requisicao": req,
+            "permissoes": _permissoes_payload_requisicoes(usuario),
+        })
     except sqlite3.Error as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 500
 
@@ -6702,10 +6930,21 @@ def api_requisicoes_salvar():
         req_id_int = int(req_id) if req_id not in (None, "") else None
     except (TypeError, ValueError):
         req_id_int = None
+    como_responsavel = bool(payload.get("como_responsavel"))
+    negado = _negar_sem_modulo(usuario, "requisicao")
+    if negado:
+        return negado
+    if not _usuario_pode_salvar_requisicao(
+        usuario,
+        tipo_requisicao=tipo_requisicao,
+        req_id=req_id_int,
+        como_responsavel=como_responsavel,
+    ):
+        return jsonify({"sucesso": False, "mensagem": "Sem permissão para salvar requisição."}), 403
     try:
         init_ordens_servico()
         with conexao_banco() as conn:
-            if _usuario_pode_gerenciar_requisicoes(usuario) and payload.get("como_responsavel"):
+            if como_responsavel and not _usuario_e_mecanico(usuario):
                 salvo = salvar_requisicao(
                     conn,
                     numero_os=numero_os,
@@ -6719,7 +6958,7 @@ def api_requisicoes_salvar():
                     titulo=titulo,
                 )
             elif _usuario_e_mecanico(usuario):
-                if tipo_requisicao == "interna" and payload.get("como_responsavel"):
+                if tipo_requisicao == "interna" and como_responsavel:
                     return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
                 if tipo_requisicao != "interna" and numero_os:
                     exigir_pode_abrir_requisicao_mecanico(
@@ -6742,14 +6981,19 @@ def api_requisicoes_salvar():
         visao = _visao_fluxo_usuario(usuario)
         _enriquecer_requisicao_catalogo(salvo, visao=visao)
         sub_req = "Envio de requisição" if salvo.get("status") == "enviada" else "Salvar requisição"
+        modulo_rast = "Requisições internas" if tipo_requisicao == "interna" else "Requisições de O.S."
         _registrar_acao_rastreio(
             usuario,
-            "Requisições",
+            modulo_rast,
             sub_req,
             f"Req. #{salvo.get('id') or req_id_int or '—'}"
             + (f" · O.S. {numero_os}" if numero_os else ""),
         )
-        return jsonify({"sucesso": True, "requisicao": salvo})
+        return jsonify({
+            "sucesso": True,
+            "requisicao": salvo,
+            "permissoes": _permissoes_payload_requisicoes(usuario),
+        })
     except ValueError as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400
     except sqlite3.Error as exc:
@@ -6761,6 +7005,9 @@ def api_requisicoes_enviar(req_id: int):
     usuario = _usuario_logado()
     if not _usuario_e_mecanico(usuario):
         return jsonify({"sucesso": False, "mensagem": "Apenas mecânicos enviam requisições."}), 403
+    negado = _negar_sem_permissao(usuario, "requisicoes_os_enviar")
+    if negado:
+        return negado
     try:
         init_ordens_servico()
         with conexao_banco() as conn:
@@ -6781,6 +7028,12 @@ def api_requisicoes_enviar(req_id: int):
                 )
             salvo = enviar_requisicao_mecanico(conn, req_id, int(usuario["id"]))
         _enriquecer_requisicao_catalogo(salvo, visao="mecanico")
+        _registrar_acao_rastreio(
+            usuario,
+            "Requisições de O.S.",
+            "Enviar requisição",
+            f"Req. #{req_id}" + (f" · O.S. {numero_os}" if numero_os else ""),
+        )
         return jsonify({"sucesso": True, "requisicao": salvo, "mensagem": "Requisição enviada."})
     except ValueError as exc:
         return jsonify({"sucesso": False, "mensagem": str(exc)}), 400
@@ -6791,13 +7044,23 @@ def api_requisicoes_enviar(req_id: int):
 @app.route("/api/requisicoes/<int:req_id>/responder", methods=["POST"])
 def api_requisicoes_responder(req_id: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_modulo(usuario, "requisicao")
+    if negado:
+        return negado
+    negado = _negar_sem_permissao(usuario, "requisicoes_os_responder")
+    if negado:
+        return negado
     try:
         init_ordens_servico()
         with conexao_banco() as conn:
             salvo = enviar_resposta_responsavel(conn, req_id)
         _enriquecer_requisicao_catalogo(salvo, visao="responsavel")
+        _registrar_acao_rastreio(
+            usuario,
+            "Requisições de O.S.",
+            "Enviar resposta (preços)",
+            f"Req. #{req_id}",
+        )
         return jsonify({
             "sucesso": True,
             "requisicao": salvo,
@@ -6812,13 +7075,23 @@ def api_requisicoes_responder(req_id: int):
 @app.route("/api/requisicoes/<int:req_id>/finalizar-interna", methods=["POST"])
 def api_requisicoes_finalizar_interna(req_id: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_modulo(usuario, "requisicao")
+    if negado:
+        return negado
+    negado = _negar_sem_permissao(usuario, "requisicoes_interna_finalizar_interna")
+    if negado:
+        return negado
     try:
         init_ordens_servico()
         with conexao_banco() as conn:
             salvo = finalizar_requisicao_interna(conn, req_id)
         _enriquecer_requisicao_catalogo(salvo, visao="responsavel")
+        _registrar_acao_rastreio(
+            usuario,
+            "Requisições internas",
+            "Finalizar requisição",
+            f"Req. #{req_id}",
+        )
         return jsonify({
             "sucesso": True,
             "requisicao": salvo,
@@ -6858,6 +7131,12 @@ def api_requisicoes_publicar_oficina(req_id: int):
         with conexao_banco() as conn:
             salvo = publicar_requisicao_interna_oficina(conn, req_id)
         _enriquecer_requisicao_catalogo(salvo, visao="responsavel")
+        _registrar_acao_rastreio(
+            usuario,
+            "Requisições internas",
+            "Enviar à oficina",
+            f"Req. #{req_id}",
+        )
         return jsonify({
             "sucesso": True,
             "requisicao": salvo,
@@ -6880,7 +7159,10 @@ def api_requisicoes_marcar_vista(req_id: int):
             marcar_requisicao_vista(
                 conn,
                 req_id,
-                como_responsavel=_usuario_pode_gerenciar_requisicoes(usuario),
+                como_responsavel=(
+                    _usuario_pode_ver_requisicoes_os_responsavel(usuario)
+                    or _usuario_pode_ver_requisicoes_interna(usuario)
+                ),
             )
         return jsonify({"sucesso": True})
     except sqlite3.Error as exc:
@@ -6892,8 +7174,12 @@ def api_requisicoes_liberar_estoque(req_id: int):
     usuario = _usuario_logado()
     if not usuario:
         return jsonify({"sucesso": False, "mensagem": "Faça login."}), 401
-    if not _usuario_pode_gerenciar_requisicoes(usuario):
-        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_modulo(usuario, "requisicao")
+    if negado:
+        return negado
+    negado = _negar_sem_permissao(usuario, "requisicoes_os_liberar_estoque")
+    if negado:
+        return negado
     payload = request.get_json(silent=True) or {}
     senha = str(payload.get("senha") or "")
     ok, msg = _validar_senha_usuario_logado(usuario, senha)
@@ -6915,6 +7201,12 @@ def api_requisicoes_liberar_estoque(req_id: int):
                 permitir_sem_estoque=permitir_sem_estoque,
             )
         _enriquecer_requisicao_catalogo(salvo, visao="responsavel")
+        _registrar_acao_rastreio(
+            usuario,
+            "Requisições de O.S.",
+            "Liberar peças do estoque",
+            f"Req. #{req_id}",
+        )
         return jsonify({"sucesso": True, "requisicao": salvo})
     except EstoqueInsuficienteError as exc:
         return jsonify({
@@ -7250,7 +7542,10 @@ def api_notificacoes():
         init_ordens_servico()
         with conexao_banco() as conn:
             uid = int(usuario["id"]) if _usuario_e_mecanico(usuario) else None
-            if not _usuario_e_mecanico(usuario) and not _usuario_pode_gerenciar_requisicoes(usuario):
+            if not _usuario_e_mecanico(usuario) and not (
+                _usuario_pode_ver_requisicoes_os_responsavel(usuario)
+                or _usuario_pode_ver_requisicoes_interna(usuario)
+            ):
                 return jsonify({"sucesso": True, "notificacoes": []})
             notifs = listar_notificacoes(conn, visao=visao, usuario_id=uid)
         return jsonify({"sucesso": True, "notificacoes": notifs})

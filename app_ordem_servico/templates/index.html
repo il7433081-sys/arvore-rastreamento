@@ -6625,6 +6625,159 @@
             }
         }
 
+        let reqPermissoesCache = {};
+
+        function reqOsPodeVisualizar() {
+            return osTemPermissao("requisicoes_os_visualizar");
+        }
+        function reqOsPodeCriar() {
+            return osTemPermissao("requisicoes_os_criar");
+        }
+        function reqOsPodeEditar() {
+            return osTemPermissao("requisicoes_os_editar");
+        }
+        function reqOsPodeEnviar() {
+            return osTemPermissao("requisicoes_os_enviar");
+        }
+        function reqOsPodeResponder() {
+            return osTemPermissao("requisicoes_os_responder");
+        }
+        function reqOsPodeLiberarEstoque() {
+            return osTemPermissao("requisicoes_os_liberar_estoque");
+        }
+        function reqInternaPodeVisualizar() {
+            return osTemPermissao("requisicoes_interna_visualizar");
+        }
+        function reqInternaPodeCriar() {
+            return osTemPermissao("requisicoes_interna_criar");
+        }
+        function reqInternaPodeEditar() {
+            return osTemPermissao("requisicoes_interna_editar");
+        }
+        function reqInternaPodeFinalizar() {
+            return osTemPermissao("requisicoes_interna_finalizar_interna");
+        }
+        function reqPodeReceberNotificacoesFluxo() {
+            if (PERMISSOES_OS.perfil === "mecanico") return true;
+            return reqOsPodeVisualizar() || reqOsPodeCriar() || reqOsPodeEditar()
+                || reqOsPodeResponder() || reqOsPodeLiberarEstoque()
+                || reqInternaPodeVisualizar() || reqInternaPodeCriar()
+                || reqInternaPodeEditar() || reqInternaPodeFinalizar();
+        }
+        function reqPodeAbrirPerfilMecanicoNotificacao() {
+            return PERMISSOES_OS.pode_atribuir_mecanico || listaPodeAtribuirMecanico()
+                || reqOsPodeResponder() || reqOsPodeEditar()
+                || reqInternaPodeEditar() || reqInternaPodeFinalizar();
+        }
+        function podeVerPerfisMecanicosSidebar() {
+            return PERMISSOES_OS.pode_atribuir_mecanico || listaPodeAtribuirMecanico()
+                || reqOsPodeResponder() || reqOsPodeEditar()
+                || reqInternaPodeEditar() || reqInternaPodeFinalizar();
+        }
+        function reqEhResponsavel() {
+            return PERMISSOES_OS.perfil !== "mecanico";
+        }
+        function reqPodeEditarPrecos() {
+            if (!reqEhResponsavel()) return false;
+            return reqOsPodeEditar() || reqOsPodeResponder() || reqInternaPodeEditar();
+        }
+        function reqPodeUsarCatalogoPecas() {
+            if (PERMISSOES_OS.perfil === "mecanico") {
+                return reqOsPodeCriar() || reqOsPodeEditar();
+            }
+            return reqOsPodeCriar() || reqOsPodeEditar() || reqOsPodeResponder()
+                || reqInternaPodeCriar() || reqInternaPodeEditar();
+        }
+        function reqPodeUsarCatalogoMo() {
+            return reqEhResponsavel() && reqPodeEditarPrecos();
+        }
+        function reqPodeSalvarEditor() {
+            const idEl = document.getElementById("req-editor-id");
+            const temId = !!(idEl && idEl.value);
+            const interna = reqEditorTipo === "interna";
+            if (PERMISSOES_OS.perfil === "mecanico") {
+                return temId ? reqOsPodeEditar() : reqOsPodeCriar();
+            }
+            if (interna) {
+                return temId ? reqInternaPodeEditar() : reqInternaPodeCriar();
+            }
+            return temId ? reqOsPodeEditar() : reqOsPodeCriar();
+        }
+        function reqPodeVerAbaLista(aba) {
+            if (aba === "internas") {
+                return reqInternaPodeVisualizar();
+            }
+            if (PERMISSOES_OS.perfil === "mecanico") {
+                return reqOsPodeVisualizar() || reqOsPodeCriar()
+                    || reqOsPodeEditar() || reqOsPodeEnviar();
+            }
+            return reqOsPodeVisualizar();
+        }
+        function primeiraAbaRequisicoesPermitida() {
+            const ordem = ["ativas", "finalizadas", "internas"];
+            for (let i = 0; i < ordem.length; i++) {
+                if (reqPodeVerAbaLista(ordem[i])) return ordem[i];
+            }
+            return null;
+        }
+        function garantirAbaRequisicoesAtiva() {
+            const permitida = primeiraAbaRequisicoesPermitida();
+            if (!permitida) return false;
+            if (!reqPodeVerAbaLista(reqListaAbaAtiva)) {
+                reqListaAbaAtiva = permitida;
+                document.querySelectorAll("#req-lista-subabas [data-req-aba]").forEach(function (btn) {
+                    btn.classList.toggle("active", btn.getAttribute("data-req-aba") === reqListaAbaAtiva);
+                });
+            }
+            return true;
+        }
+        function requisicoesPainelAtivo() {
+            const pane = document.getElementById("pane-mod-requisicao");
+            return !!(pane && pane.classList.contains("active"));
+        }
+        function aplicarPermissoesRequisicoesUi() {
+            const ehMec = PERMISSOES_OS.perfil === "mecanico";
+            const p = reqPermissoesCache || {};
+            document.querySelectorAll("#req-lista-subabas [data-req-aba]").forEach(function (btn) {
+                const aba = btn.getAttribute("data-req-aba");
+                const mostrar = reqPodeVerAbaLista(aba);
+                if (btn.parentElement) btn.parentElement.classList.toggle("d-none", !mostrar);
+            });
+            const btnInt = document.getElementById("btn-req-nova-interna");
+            if (btnInt) {
+                btnInt.classList.toggle("d-none", ehMec || !(p.pode_criar_interna ?? reqInternaPodeCriar()));
+            }
+            const btnSalvar = document.getElementById("btn-req-salvar");
+            if (btnSalvar) btnSalvar.classList.toggle("d-none", !reqPodeSalvarEditor());
+            const buscaPecas = document.getElementById("req-editor-busca-catalogo");
+            if (buscaPecas) buscaPecas.classList.toggle("d-none", !reqPodeUsarCatalogoPecas());
+            const buscaMo = document.getElementById("req-editor-busca-catalogo-mo");
+            if (buscaMo) buscaMo.classList.toggle("d-none", !reqPodeUsarCatalogoMo());
+            const tituloCampo = document.getElementById("req-editor-titulo-campo");
+            const osCampo = document.getElementById("req-editor-os");
+            const obsCampo = document.getElementById("req-editor-obs");
+            const bloquear = !reqPodeSalvarEditor();
+            [tituloCampo, osCampo, obsCampo].forEach(function (el) {
+                if (el) el.disabled = bloquear;
+            });
+            const contItens = document.getElementById("req-itens-container");
+            if (contItens) {
+                contItens.querySelectorAll("input, select, textarea, button").forEach(function (el) {
+                    if (bloquear) el.disabled = true;
+                });
+            }
+            atualizarBotaoConfirmarPrecosCadastro();
+            const reqIdEl = document.getElementById("req-editor-id");
+            const reqIdAtual = reqIdEl && reqIdEl.value ? String(reqIdEl.value) : "";
+            let reqAtual = null;
+            if (reqIdAtual) {
+                reqAtual = (window._cacheRequisicoes || []).find(function (r) {
+                    return String(r.id) === reqIdAtual;
+                }) || null;
+            }
+            atualizarBotoesReqEditor(reqAtual);
+        }
+
         function osPodeDevolverMecanico(os) {
             if (!listaPodeRetomar() || !os.mecanico_id) return false;
             const st = String(os.status || "").trim();
@@ -7639,7 +7792,7 @@
                     renderizarPerfisSidebar(cachePerfisSidebar, "Meu perfil");
                     return;
                 }
-                if (!PERMISSOES_OS.pode_atribuir_mecanico) {
+                if (!podeVerPerfisMecanicosSidebar()) {
                     renderizarPerfisSidebar([], "");
                     return;
                 }
@@ -7664,7 +7817,8 @@
 
         function podeEditarReqInlinePerfil() {
             return PERMISSOES_OS.perfil === "mecanico" &&
-                USUARIO_SESSAO && String(perfilAbertoId) === String(USUARIO_SESSAO.id);
+                USUARIO_SESSAO && String(perfilAbertoId) === String(USUARIO_SESSAO.id) &&
+                (reqOsPodeCriar() || reqOsPodeEditar());
         }
 
         function podeEditarChecklistPerfilInline() {
@@ -7782,7 +7936,7 @@
             if (precoCadEl && precoCadEl.value) item.catalogo_preco_ref_fmt = precoCadEl.value.trim();
             const estFmt = row.getAttribute("data-estoque-fmt");
             if (estFmt) item.estoque_atual_fmt = estFmt;
-            if (PERMISSOES_OS.pode_atribuir_mecanico) {
+            if (reqPodeEditarPrecos()) {
                 item.preco = preco.trim();
                 if (stEl && stEl.value) {
                     item.status_item = stEl.value;
@@ -7803,7 +7957,7 @@
         }
 
         function itemConfirmavelPeloCadastro(item) {
-            if (!PERMISSOES_OS.pode_atribuir_mecanico || !item) return false;
+            if (!reqPodeEditarPrecos() || !item) return false;
             if (item.status_item === "excluir_pendente") return false;
             const ref = (item.catalogo_preco_ref_fmt || "").trim();
             if (!ref) return false;
@@ -7845,6 +7999,10 @@
         }
 
         function confirmarTodosPrecosCadastroEditor() {
+            if (!reqPodeEditarPrecos()) {
+                osToast("Sem permissão para confirmar preços.", "info");
+                return;
+            }
             const itens = coletarItensReqEditor();
             let n = 0;
             itens.forEach(function (it) {
@@ -7870,7 +8028,7 @@
             const btn = document.getElementById("btn-req-confirmar-precos-cadastro");
             if (!btn) return;
             const n = contarItensConfirmaveisCadastro(coletarItensReqEditor());
-            const show = PERMISSOES_OS.pode_atribuir_mecanico && n > 0;
+            const show = reqPodeEditarPrecos() && n > 0;
             btn.classList.toggle("d-none", !show);
             if (show) {
                 btn.title = "Confirmar preço do cadastro em " + n + " item(ns) sem alteração";
@@ -8010,7 +8168,7 @@
             if (precoEl && peca.valor_unitario_fmt) precoEl.value = peca.valor_unitario_fmt;
             const btnCad = row.querySelector(".btn-req-cadastrar-peca");
             if (btnCad) btnCad.remove();
-            if (!row.querySelector(".btn-req-atualizar-cadastro") && PERMISSOES_OS.pode_atribuir_mecanico) {
+            if (!row.querySelector(".btn-req-atualizar-cadastro") && reqPodeEditarPrecos()) {
                 const acoes = row.querySelector(".req-item-acoes");
                 const btnRm = row.querySelector(".btn-req-rm, .btn-req-inline-rm");
                 const btnAt = document.createElement("button");
@@ -8050,7 +8208,7 @@
             if (precoEl && servico.valor_unitario_fmt) precoEl.value = servico.valor_unitario_fmt;
             const btnCad = row.querySelector(".btn-req-cadastrar-servico");
             if (btnCad) btnCad.remove();
-            if (!row.querySelector(".btn-req-atualizar-cadastro") && PERMISSOES_OS.pode_atribuir_mecanico) {
+            if (!row.querySelector(".btn-req-atualizar-cadastro") && reqPodeEditarPrecos()) {
                 const acoes = row.querySelector(".req-item-acoes");
                 const btnRm = row.querySelector(".btn-req-rm, .btn-req-inline-rm");
                 const btnAt = document.createElement("button");
@@ -8452,7 +8610,7 @@
         function renderizarItensReqInline(painel, itens) {
             const cont = painel.querySelector(".perfil-req-itens");
             if (!cont) return;
-            const podePreco = PERMISSOES_OS.pode_atribuir_mecanico;
+            const podePreco = reqPodeEditarPrecos();
             cont.innerHTML = "";
             const lista = (itens || []).slice();
             lista.forEach(function (item, idx) {
@@ -9422,7 +9580,7 @@
             }
 
             const btnEnviar = painel.querySelector(".btn-perfil-req-enviar");
-            if (btnEnviar) {
+            if (btnEnviar && reqOsPodeEnviar()) {
                 btnEnviar.addEventListener("click", async function () {
                     const salvo = await salvarReqPerfilInline(numeroOs, painel);
                     const idEl = painel.querySelector(".perfil-req-id");
@@ -10766,6 +10924,12 @@
             try {
                 if (typeof aplicarPermissoesFotosOsUi === "function") aplicarPermissoesFotosOsUi();
             } catch (err) { console.error("perm fotos-os:", err); }
+            try {
+                if (typeof aplicarPermissoesRequisicoesUi === "function") aplicarPermissoesRequisicoesUi();
+            } catch (err) { console.error("perm requisicoes:", err); }
+            if (requisicoesPainelAtivo() && typeof carregarRequisicoesPainel === "function") {
+                carregarRequisicoesPainel();
+            }
             const navPre = document.getElementById("nav-mod-pre-orcamentos");
             if (navPre && !mecanico) {
                 const mostrarPre = PERMISSOES_OS.perfil === "admin" || osModuloVisivel("pre_orcamentos");
@@ -10806,8 +10970,6 @@
                     : PERMISSOES_OS.pode_atribuir_mecanico) {
                 atualizarBadgeFotosOsPendentes();
             }
-            const btnReqInterna = document.getElementById("btn-req-nova-interna");
-            if (btnReqInterna) btnReqInterna.classList.toggle("d-none", PERMISSOES_OS.perfil !== "mecanico");
             if (!formOs) return;
             formOs.querySelectorAll("input, select, textarea").forEach(function (el) {
                 if (!el.name && !el.id) return;
@@ -15775,7 +15937,7 @@
             const el = document.getElementById("req-editor-alteracoes-mecanico");
             if (!el) return;
             const alt = req && req.alteracoes_mecanico;
-            const mostrar = !!(PERMISSOES_OS.pode_atribuir_mecanico && alt && (
+            const mostrar = !!(reqPodeEditarPrecos() && alt && (
                 alt.resumo || (alt.removidos && alt.removidos.length) ||
                 (alt.adicionados && alt.adicionados.length) ||
                 (alt.quantidades && alt.quantidades.length)
@@ -15815,10 +15977,12 @@
 
         function usuarioRecebeNotificacoesFluxo() {
             if (PERMISSOES_OS.perfil === "admin") return true;
+            if (PERMISSOES_OS.perfil === "mecanico") return true;
+            if (osTemPermissao("config_notificacoes_receber")) return true;
             if (!PERMISSOES_OS.controle_abas_ativo) {
-                return PERMISSOES_OS.perfil === "mecanico" || !!PERMISSOES_OS.pode_atribuir_mecanico;
+                return !!PERMISSOES_OS.pode_atribuir_mecanico || reqPodeReceberNotificacoesFluxo();
             }
-            return osTemPermissao("config_notificacoes_receber");
+            return reqPodeReceberNotificacoesFluxo();
         }
 
         function eventoNotificacaoAparelhoAtivo(evento) {
@@ -16094,7 +16258,7 @@
         function atualizarBotoesReqEditor(req) {
             const interna = reqEditorTipo === "interna" || (req && (req.tipo_requisicao || "os") === "interna");
             const finalizada = requisicaoEstaFinalizada(req);
-            const podeResp = !!PERMISSOES_OS.pode_atribuir_mecanico;
+            const podeResp = reqEhResponsavel();
             const ehMec = PERMISSOES_OS.perfil === "mecanico";
             const ehAdmin = !!(USUARIO_SESSAO && USUARIO_SESSAO.perfil === "admin");
             const btnEnviar = document.getElementById("btn-req-enviar");
@@ -16102,14 +16266,16 @@
             const btnFinalizarInt = document.getElementById("btn-req-finalizar-interna");
             const btnPublicar = document.getElementById("btn-req-publicar-oficina");
             const btnLiberar = document.getElementById("btn-req-liberar-estoque");
+            const btnSalvar = document.getElementById("btn-req-salvar");
+            if (btnSalvar) btnSalvar.classList.toggle("d-none", !reqPodeSalvarEditor());
             if (btnEnviar) {
-                btnEnviar.classList.toggle("d-none", !ehMec || finalizada);
+                btnEnviar.classList.toggle("d-none", !ehMec || !reqOsPodeEnviar() || finalizada);
             }
             if (btnResponder) {
-                btnResponder.classList.toggle("d-none", !podeResp || interna || finalizada);
+                btnResponder.classList.toggle("d-none", !podeResp || !reqOsPodeResponder() || interna || finalizada);
             }
             if (btnFinalizarInt) {
-                btnFinalizarInt.classList.toggle("d-none", !podeResp || !interna || finalizada);
+                btnFinalizarInt.classList.toggle("d-none", !podeResp || !reqInternaPodeFinalizar() || !interna || finalizada);
             }
             if (btnPublicar) {
                 const podePub = podeResp && interna && ehAdmin && window._cfgInternaPublicarOficina
@@ -16117,7 +16283,7 @@
                 btnPublicar.classList.toggle("d-none", !podePub);
             }
             if (btnLiberar) {
-                const temPecaLib = podeResp && req && (req.itens || []).some(function (it) {
+                const temPecaLib = reqOsPodeLiberarEstoque() && req && (req.itens || []).some(function (it) {
                     if (it.tipo_item === "mo" || it.status_item === "excluir_pendente") return false;
                     if (!it.catalogo_id) return false;
                     return statusLiberacaoItem(it) !== "ok";
@@ -16126,12 +16292,12 @@
             }
             const hintSalvar = document.getElementById("req-editor-hint-salvar-responsavel");
             if (hintSalvar) {
-                if (interna && podeResp) {
+                if (interna && reqInternaPodeEditar()) {
                     hintSalvar.classList.remove("d-none");
                     hintSalvar.innerHTML = "<strong>Salvar rascunho</strong> grava preços sem finalizar. " +
                         "<strong>Finalizar requisição</strong> encerra o uso interno (não gera nota).";
                 } else {
-                    hintSalvar.classList.toggle("d-none", !podeResp);
+                    hintSalvar.classList.toggle("d-none", !reqPodeEditarPrecos());
                     hintSalvar.innerHTML = "<strong>Salvar rascunho</strong> grava no servidor sem avisar a oficina. " +
                         "<strong>Enviar resposta</strong> só quando os preços estiverem prontos.";
                 }
@@ -16203,7 +16369,7 @@
                     method: "POST", credentials: "same-origin",
                 });
             }
-            if (mecId && PERMISSOES_OS.pode_atribuir_mecanico
+            if (mecId && reqPodeAbrirPerfilMecanicoNotificacao()
                     && navPosAcaoAtiva("notificacao_abre_perfil")) {
                 await abrirPerfilMecanico(mecId);
             }
@@ -16255,7 +16421,7 @@
         function renderizarItensReqEditor() {
             const cont = document.getElementById("req-itens-container");
             if (!cont) return;
-            const podePreco = PERMISSOES_OS.pode_atribuir_mecanico;
+            const podePreco = reqPodeEditarPrecos();
             cont.innerHTML = "";
             const lista = (reqEditorItens || []).slice();
             lista.forEach(function (item, idx) {
@@ -16287,7 +16453,7 @@
             const busca = document.getElementById("req-editor-busca-catalogo");
             const buscaMo = document.getElementById("req-editor-busca-catalogo-mo");
             if (buscaMo) {
-                buscaMo.classList.toggle("d-none", !PERMISSOES_OS.pode_atribuir_mecanico);
+                buscaMo.classList.toggle("d-none", !reqPodeUsarCatalogoMo());
             }
             if (busca) {
                 busca._reqOnAdicionarPeca = function (novo) {
@@ -16306,7 +16472,7 @@
                 };
                 inicializarBuscaCatalogoPecas(busca.parentElement || document);
             }
-            if (buscaMo && PERMISSOES_OS.pode_atribuir_mecanico) {
+            if (buscaMo && reqPodeUsarCatalogoMo()) {
                 buscaMo._reqOnAdicionarServico = function (novo) {
                     reqEditorItens = coletarItensReqEditor();
                     reqEditorItens.push(novo);
@@ -16346,6 +16512,7 @@
                 }
                 if (resp.ok && data.sucesso && data.requisicao) {
                     req = data.requisicao;
+                    if (data.permissoes) reqPermissoesCache = data.permissoes;
                     const idx = (window._cacheRequisicoes || []).findIndex(function (r) {
                         return String(r.id) === String(reqId);
                     });
@@ -16404,10 +16571,11 @@
             atualizarBotoesReqEditor(req);
             const btnSalvarReq = document.getElementById("btn-req-salvar");
             if (btnSalvarReq) {
-                btnSalvarReq.innerHTML = PERMISSOES_OS.pode_atribuir_mecanico
+                btnSalvarReq.innerHTML = reqEhResponsavel()
                     ? '<i class="bi bi-save"></i> Salvar rascunho'
                     : '<i class="bi bi-save"></i> Salvar';
             }
+            aplicarPermissoesRequisicoesUi();
             if (PERMISSOES_OS.perfil === "mecanico") {
                 fetch("/api/requisicoes/" + encodeURIComponent(reqId) + "/marcar-vista", {
                     method: "POST",
@@ -16535,19 +16703,36 @@
         async function carregarRequisicoesPainel() {
             const painel = document.getElementById("lista-requisicoes-painel");
             if (!painel) return;
+            if (!garantirAbaRequisicoesAtiva()) {
+                painel.innerHTML = '<p class="text-muted small">Sem permissão para visualizar requisições.</p>';
+                return;
+            }
             painel.innerHTML = '<p class="text-muted small">Carregando...</p>';
             try {
                 const url = "/api/requisicoes?aba=" + encodeURIComponent(reqListaAbaAtiva);
                 const resp = await fetch(url, FETCH_OPTS);
-                const data = await resp.json();
+                let data = {};
+                try {
+                    data = await resp.json();
+                } catch (parseErr) {
+                    throw new Error("Resposta inválida do servidor (" + resp.status + ").");
+                }
                 if (!resp.ok || !data.sucesso) {
-                    painel.innerHTML = '<p class="text-muted small">Sem permissão ou nenhuma requisição.</p>';
+                    painel.innerHTML = '<p class="text-muted small">' +
+                        escHtml(data.mensagem || "Sem permissão ou nenhuma requisição.") + "</p>";
                     return;
                 }
+                if (data.permissoes) reqPermissoesCache = data.permissoes;
                 window._cacheRequisicoes = data.requisicoes || [];
+                try {
+                    aplicarPermissoesRequisicoesUi();
+                } catch (permErr) {
+                    console.error("perm requisicoes ui:", permErr);
+                }
                 renderizarListaRequisicoes(window._cacheRequisicoes);
             } catch (err) {
-                painel.innerHTML = '<p class="text-danger small">Erro ao carregar.</p>';
+                painel.innerHTML = '<p class="text-danger small">' +
+                    escHtml(err.message || "Erro ao carregar.") + "</p>";
             }
         }
 
@@ -16561,6 +16746,10 @@
         }
 
         async function salvarRequisicaoEditor() {
+            if (!reqPodeSalvarEditor()) {
+                osToast("Sem permissão para salvar requisição.", "info");
+                return null;
+            }
             const osNum = parseInt(document.getElementById("req-editor-os").value, 10) || 0;
             const payload = {
                 id: document.getElementById("req-editor-id").value || undefined,
@@ -16569,9 +16758,9 @@
                 titulo: (document.getElementById("req-editor-titulo-campo") || {}).value || "",
                 itens: coletarItensReqEditor(),
                 observacao: document.getElementById("req-editor-obs").value,
-                como_responsavel: PERMISSOES_OS.pode_atribuir_mecanico,
+                como_responsavel: reqEhResponsavel(),
             };
-            if (PERMISSOES_OS.pode_atribuir_mecanico && reqEditorMecanicoId) {
+            if (reqEhResponsavel() && reqEditorMecanicoId) {
                 payload.mecanico_id = reqEditorMecanicoId;
                 payload.mecanico_nome = reqEditorMecanicoNome;
             }
@@ -16588,7 +16777,7 @@
                 return null;
             }
             if (fb) {
-                if (PERMISSOES_OS.pode_atribuir_mecanico) {
+                if (reqEhResponsavel()) {
                     const idAntigo = payload.id ? String(payload.id) : "";
                     const idNovo = data.requisicao && data.requisicao.id != null
                         ? String(data.requisicao.id) : "";
@@ -16602,6 +16791,7 @@
                 }
             }
             if (data.requisicao) {
+                if (data.permissoes) reqPermissoesCache = data.permissoes;
                 document.getElementById("req-editor-id").value = data.requisicao.id;
                 if (data.requisicao.mecanico_id != null) {
                     reqEditorMecanicoId = data.requisicao.mecanico_id;
@@ -16620,6 +16810,10 @@
         }
 
         function novaRequisicaoInterna() {
+            if (!reqInternaPodeCriar()) {
+                osToast("Sem permissão para criar requisição interna.", "info");
+                return;
+            }
             document.getElementById("req-editor-id").value = "";
             reqEditorMecanicoId = null;
             reqEditorMecanicoNome = "";
@@ -16643,6 +16837,10 @@
         let modalLiberarEstoque = null;
 
         async function abrirModalLiberarEstoque() {
+            if (!reqOsPodeLiberarEstoque()) {
+                osToast("Sem permissão para liberar peças do estoque.", "info");
+                return;
+            }
             const reqId = document.getElementById("req-editor-id").value;
             if (!reqId) {
                 osToast("Salve a requisição antes de liberar peças.", "aviso");
@@ -16685,6 +16883,10 @@
 
         async function confirmarLiberarEstoque(opcoes) {
             const opts = opcoes || {};
+            if (!reqOsPodeLiberarEstoque()) {
+                osToast("Sem permissão para liberar peças do estoque.", "info");
+                return;
+            }
             const reqId = document.getElementById("req-editor-id").value;
             const btn = document.getElementById("btn-req-liberar-estoque");
             const lista = document.getElementById("modal-liberar-estoque-lista");
@@ -17667,6 +17869,10 @@
         const btnReqEnviar = document.getElementById("btn-req-enviar");
         if (btnReqEnviar) {
             btnReqEnviar.addEventListener("click", async function () {
+                if (!reqOsPodeEnviar()) {
+                    osToast("Sem permissão para enviar requisição.", "info");
+                    return;
+                }
                 const salvo = await salvarRequisicaoEditor();
                 const id = document.getElementById("req-editor-id").value;
                 if (!salvo || !id) {
@@ -17697,6 +17903,10 @@
         }
         if (btnReqResponder) {
             btnReqResponder.addEventListener("click", async function () {
+                if (!reqOsPodeResponder()) {
+                    osToast("Sem permissão para enviar resposta.", "info");
+                    return;
+                }
                 const salvo = await salvarRequisicaoEditor();
                 const id = document.getElementById("req-editor-id").value;
                 if (!salvo || !id) return;
@@ -17717,6 +17927,10 @@
         const btnReqFinalizarInterna = document.getElementById("btn-req-finalizar-interna");
         if (btnReqFinalizarInterna) {
             btnReqFinalizarInterna.addEventListener("click", async function () {
+                if (!reqInternaPodeFinalizar()) {
+                    osToast("Sem permissão para finalizar requisição interna.", "info");
+                    return;
+                }
                 const salvo = await salvarRequisicaoEditor();
                 const id = document.getElementById("req-editor-id").value;
                 if (!salvo || !id) return;
@@ -17919,6 +18133,7 @@
         const navModRequisicao = document.getElementById("nav-mod-requisicao");
         if (navModRequisicao) {
             navModRequisicao.addEventListener("shown.bs.tab", function () {
+                aplicarPermissoesRequisicoesUi();
                 carregarRequisicoesPainel();
                 renderizarItensReqEditor();
             });
