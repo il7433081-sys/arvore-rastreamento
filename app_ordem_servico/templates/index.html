@@ -6862,6 +6862,129 @@
             garantirSubabaEstoqueAtiva();
         }
 
+        function cadClientesPodeVisualizar() {
+            return osTemPermissao("cadastros_clientes_visualizar");
+        }
+        function cadClientesPodeCriar() {
+            return osTemPermissao("cadastros_clientes_criar");
+        }
+        function cadClientesPodeEditar() {
+            return osTemPermissao("cadastros_clientes_editar");
+        }
+        function cadPodeBuscarClientes() {
+            if (cadClientesPodeVisualizar()) return true;
+            if (!PERMISSOES_OS.controle_abas_ativo) return true;
+            if (PERMISSOES_OS.perfil === "mecanico") return false;
+            return osTemPermissao("ordem_os_geral_visualizar")
+                || osTemPermissao("ordem_os_geral_criar")
+                || osTemPermissao("ordem_os_geral_editar")
+                || (typeof agPodeVisualizar === "function" && (
+                    agPodeVisualizar() || agPodeCriar() || agPodeEditar()
+                ))
+                || (typeof poPodeVisualizar === "function" && (
+                    poPodeVisualizar() || poPodeCriar() || poPodeEditar()
+                ));
+        }
+        function cadPodeSalvarClienteAtual() {
+            const id = (document.getElementById("cliente_id") || {}).value || "";
+            return id ? cadClientesPodeEditar() : cadClientesPodeCriar();
+        }
+        function cadMotoresPodeCriar() {
+            return osTemPermissao("cadastros_motores_criar");
+        }
+        function cadMotoresPodeEditar() {
+            return osTemPermissao("cadastros_motores_editar");
+        }
+        function cadPodeSalvarMotorAtual() {
+            const id = (document.getElementById("motor_id") || {}).value || "";
+            return id ? cadMotoresPodeEditar() : cadMotoresPodeCriar();
+        }
+        function cadPecasPodeVisualizar() {
+            return osTemPermissao("cadastros_pecas_visualizar");
+        }
+        function cadPecasPodeCriar() {
+            return osTemPermissao("cadastros_pecas_criar");
+        }
+        function cadPecasPodeEditar() {
+            return osTemPermissao("cadastros_pecas_editar");
+        }
+        function cadServicosPodeVisualizar() {
+            return osTemPermissao("cadastros_servicos_visualizar");
+        }
+        function cadServicosPodeCriar() {
+            return osTemPermissao("cadastros_servicos_criar");
+        }
+        function cadServicosPodeEditar() {
+            return osTemPermissao("cadastros_servicos_editar");
+        }
+        function cadPodeUsarCatalogoPecas() {
+            return (typeof reqPodeUsarCatalogoPecas === "function" && reqPodeUsarCatalogoPecas())
+                || cadPecasPodeVisualizar()
+                || (typeof estoquePodeVisualizar === "function" && estoquePodeVisualizar())
+                || (typeof estoquePodeMovimentar === "function" && estoquePodeMovimentar());
+        }
+        function cadPodeUsarCatalogoServicos() {
+            return (typeof reqPodeUsarCatalogoMo === "function" && reqPodeUsarCatalogoMo())
+                || cadServicosPodeVisualizar();
+        }
+        function cadPodeCriarPecaRequisicao() {
+            return cadPecasPodeCriar() || (typeof reqPodeUsarCatalogoPecas === "function" && reqPodeUsarCatalogoPecas());
+        }
+        function cadPodeEditarPecaCatalogo() {
+            return cadPecasPodeEditar()
+                || (typeof estoquePodeEditarPeca === "function" && estoquePodeEditarPeca());
+        }
+        function cadPodeCriarServicoRequisicao() {
+            return cadServicosPodeCriar() || (typeof reqPodeUsarCatalogoMo === "function" && reqPodeUsarCatalogoMo());
+        }
+        function cadPodeEditarServicoCatalogo() {
+            return cadServicosPodeEditar();
+        }
+        function aplicarPermissoesCadastrosUi() {
+            const btnBuscaCli = document.getElementById("btn-buscar-cliente");
+            if (btnBuscaCli) btnBuscaCli.classList.toggle("d-none", !cadPodeBuscarClientes());
+            const btnSalvarCli = document.getElementById("btn-salvar-cliente");
+            if (btnSalvarCli) btnSalvarCli.classList.toggle("d-none", !cadPodeSalvarClienteAtual());
+            const btnSalvarMot = document.getElementById("btn-salvar-motor");
+            if (btnSalvarMot) btnSalvarMot.classList.toggle("d-none", !cadPodeSalvarMotorAtual());
+            const campoBuscaCli = document.getElementById("busca_cliente");
+            if (campoBuscaCli) campoBuscaCli.disabled = !cadPodeBuscarClientes();
+            const idsCliente = [
+                "cliente_nome", "cliente_telefone", "cliente_celular", "cliente_cpf_cnpj",
+                "cliente_rg", "cliente_endereco", "cliente_numero", "cliente_bairro",
+                "cliente_cidade", "cliente_estado", "cliente_cep",
+            ];
+            const podeEditarCli = cadClientesPodeCriar() || cadClientesPodeEditar();
+            idsCliente.forEach(function (id) {
+                const el = document.getElementById(id);
+                if (el) el.readOnly = !podeEditarCli;
+            });
+            const idsMotor = [
+                "num_chassi", "horas_uso", "fabricante", "modelo", "embarcacao_nome",
+            ];
+            const podeEditarMot = cadMotoresPodeCriar() || cadMotoresPodeEditar();
+            idsMotor.forEach(function (id) {
+                const el = document.getElementById(id);
+                if (el) el.readOnly = !podeEditarMot;
+            });
+            const btnAgNovoCli = document.getElementById("ag-modal-btn-novo-cliente");
+            if (btnAgNovoCli) {
+                btnAgNovoCli.classList.toggle("d-none", !cadClientesPodeCriar());
+            }
+            const btnAgBuscaCli = document.getElementById("ag-modal-btn-buscar");
+            if (btnAgBuscaCli) btnAgBuscaCli.classList.toggle("d-none", !cadPodeBuscarClientes());
+            const btnPoBuscaCli = document.getElementById("po-modal-btn-buscar-cliente");
+            if (btnPoBuscaCli) btnPoBuscaCli.classList.toggle("d-none", !cadPodeBuscarClientes());
+            const buscaPecas = document.getElementById("req-editor-busca-catalogo");
+            if (buscaPecas) {
+                buscaPecas.classList.toggle("d-none", !(typeof reqPodeUsarCatalogoPecas === "function" && reqPodeUsarCatalogoPecas()));
+            }
+            const buscaMo = document.getElementById("req-editor-busca-catalogo-mo");
+            if (buscaMo) {
+                buscaMo.classList.toggle("d-none", !(typeof reqPodeUsarCatalogoMo === "function" && reqPodeUsarCatalogoMo()));
+            }
+        }
+
         function osPodeDevolverMecanico(os) {
             if (!listaPodeRetomar() || !os.mecanico_id) return false;
             const st = String(os.status || "").trim();
@@ -7391,9 +7514,14 @@
                 "ok"
             );
             await carregarMotoresCliente(cliente.id);
+            try { aplicarPermissoesCadastrosUi(); } catch (e) { /* ignora */ }
         }
 
         async function buscarCliente() {
+            if (!cadPodeBuscarClientes()) {
+                definirFeedback(feedbackBusca, "Sem permissão para buscar clientes.", "info");
+                return;
+            }
             const termo = (campoBusca && campoBusca.value || "").trim();
             if (!termo) {
                 definirFeedback(feedbackBusca, "Digite um nome ou CPF/CNPJ para buscar.", "info");
@@ -8147,6 +8275,10 @@
         }
 
         function abrirModalCadastroPeca(linhaRow, onSalvo) {
+            if (!cadPodeCriarPecaRequisicao()) {
+                osToast("Sem permissão para cadastrar peça.", "info");
+                return;
+            }
             const modalEl = document.getElementById("modal-cadastro-peca");
             const descInp = document.getElementById("modal-peca-desc");
             const codInp = document.getElementById("modal-peca-codigo");
@@ -8189,6 +8321,10 @@
         }
 
         async function atualizarCadastroPecaDaLinha(row) {
+            if (!cadPodeEditarPecaCatalogo()) {
+                osToast("Sem permissão para editar cadastro de peças.", "info");
+                return;
+            }
             const catEl = row.querySelector(".req-item-catalogo-id");
             if (!catEl || !catEl.value) {
                 osToast("Esta linha não está vinculada ao cadastro de peças.", 'info');
@@ -8252,7 +8388,7 @@
             if (precoEl && peca.valor_unitario_fmt) precoEl.value = peca.valor_unitario_fmt;
             const btnCad = row.querySelector(".btn-req-cadastrar-peca");
             if (btnCad) btnCad.remove();
-            if (!row.querySelector(".btn-req-atualizar-cadastro") && reqPodeEditarPrecos()) {
+            if (!row.querySelector(".btn-req-atualizar-cadastro") && cadPodeEditarPecaCatalogo() && reqPodeEditarPrecos()) {
                 const acoes = row.querySelector(".req-item-acoes");
                 const btnRm = row.querySelector(".btn-req-rm, .btn-req-inline-rm");
                 const btnAt = document.createElement("button");
@@ -8292,7 +8428,7 @@
             if (precoEl && servico.valor_unitario_fmt) precoEl.value = servico.valor_unitario_fmt;
             const btnCad = row.querySelector(".btn-req-cadastrar-servico");
             if (btnCad) btnCad.remove();
-            if (!row.querySelector(".btn-req-atualizar-cadastro") && reqPodeEditarPrecos()) {
+            if (!row.querySelector(".btn-req-atualizar-cadastro") && cadPodeEditarServicoCatalogo() && reqPodeEditarPrecos()) {
                 const acoes = row.querySelector(".req-item-acoes");
                 const btnRm = row.querySelector(".btn-req-rm, .btn-req-inline-rm");
                 const btnAt = document.createElement("button");
@@ -8306,6 +8442,10 @@
         }
 
         async function atualizarCadastroServicoDaLinha(row) {
+            if (!cadPodeEditarServicoCatalogo()) {
+                osToast("Sem permissão para editar cadastro de serviços.", "info");
+                return;
+            }
             const catEl = row.querySelector(".req-item-catalogo-id");
             if (!catEl || !catEl.value) {
                 osToast("Esta linha não está vinculada ao cadastro de serviços.", "info");
@@ -8341,6 +8481,10 @@
         }
 
         function abrirModalCadastroServico(linhaRow, onSalvo) {
+            if (!cadPodeCriarServicoRequisicao()) {
+                osToast("Sem permissão para cadastrar serviço.", "info");
+                return;
+            }
             const modalEl = document.getElementById("modal-cadastro-servico");
             const descInp = document.getElementById("modal-servico-desc");
             const valInp = document.getElementById("modal-servico-valor");
@@ -8449,18 +8593,20 @@
             html += '<div class="col-md-auto col-12 d-flex align-items-center gap-1 flex-wrap req-item-acoes">';
             html += badgeItemRequisicao(item);
             if (podePreco && catalogo && !exclPend && !mechanicMoReadonly) {
-                html += '<button type="button" class="btn btn-sm btn-outline-info btn-req-atualizar-cadastro" title="Atualizar cadastro da oficina">' +
-                    '<i class="bi bi-database-up"></i></button>';
+                if (isMo ? cadPodeEditarServicoCatalogo() : cadPodeEditarPecaCatalogo()) {
+                    html += '<button type="button" class="btn btn-sm btn-outline-info btn-req-atualizar-cadastro" title="Atualizar cadastro da oficina">' +
+                        '<i class="bi bi-database-up"></i></button>';
+                }
             }
             if (itemConfirmavelPeloCadastro(item) && !exclPend && !mechanicMoReadonly) {
                 html += '<button type="button" class="btn btn-sm btn-outline-success btn-req-confirmar-preco" title="Confirmar preço do cadastro (sem alterar)">' +
                     '<i class="bi bi-check2"></i></button>';
             }
-            if (podePreco && !catalogo && !exclPend && !isMo && (item.descricao || "").trim()) {
+            if (podePreco && !catalogo && !exclPend && !isMo && (item.descricao || "").trim() && cadPodeCriarPecaRequisicao()) {
                 html += '<button type="button" class="btn btn-sm btn-outline-success btn-req-cadastrar-peca" title="Cadastrar peça na oficina">' +
                     '<i class="bi bi-plus-square"></i></button>';
             }
-            if (podePreco && !catalogo && !exclPend && isMo && (item.descricao || "").trim()) {
+            if (podePreco && !catalogo && !exclPend && isMo && (item.descricao || "").trim() && cadPodeCriarServicoRequisicao()) {
                 html += '<button type="button" class="btn btn-sm btn-outline-success btn-req-cadastrar-servico" title="Cadastrar serviço na oficina">' +
                     '<i class="bi bi-plus-square"></i></button>';
             }
@@ -11014,6 +11160,9 @@
             try {
                 if (typeof aplicarPermissoesEstoqueUi === "function") aplicarPermissoesEstoqueUi();
             } catch (err) { console.error("perm estoque:", err); }
+            try {
+                if (typeof aplicarPermissoesCadastrosUi === "function") aplicarPermissoesCadastrosUi();
+            } catch (err) { console.error("perm cadastros:", err); }
             if (requisicoesPainelAtivo() && typeof carregarRequisicoesPainel === "function") {
                 carregarRequisicoesPainel();
             }
@@ -14985,6 +15134,10 @@
         }
 
         async function salvarClienteCadastro() {
+            if (!cadPodeSalvarClienteAtual()) {
+                osToast("Sem permissão para salvar cliente.", "info");
+                return;
+            }
             const payload = coletarCampos([
                 "cliente_id", "cliente_nome", "cliente_telefone", "cliente_celular",
                 "cliente_cpf_cnpj", "cliente_rg", "cliente_endereco", "cliente_numero",
@@ -15010,6 +15163,7 @@
                 }
                 document.getElementById("cliente_id").value = String(data.cliente_id);
                 osToast(data.mensagem, "ok");
+                try { aplicarPermissoesCadastrosUi(); } catch (e) { /* ignora */ }
                 if (window._agRetornoAgendamento && typeof agModalAposCadastroCliente === "function") {
                     window._agRetornoAgendamento = false;
                     await agModalAposCadastroCliente(data.cliente_id);
@@ -15022,6 +15176,10 @@
         }
 
         async function salvarMotorCadastro() {
+            if (!cadPodeSalvarMotorAtual()) {
+                osToast("Sem permissão para salvar motor.", "info");
+                return;
+            }
             const clienteId = document.getElementById("cliente_id").value;
             if (!clienteId) {
                 osToast("Salve ou selecione um cliente antes de cadastrar o motor.", 'aviso');
@@ -19097,6 +19255,11 @@
         }
 
         async function poModalBuscarCliente() {
+            if (!cadPodeBuscarClientes()) {
+                const fb0 = document.getElementById("po-modal-busca-cliente-feedback");
+                if (fb0) fb0.textContent = "Sem permissão para buscar clientes.";
+                return;
+            }
             const campo = document.getElementById("po-modal-busca-cliente");
             const fb = document.getElementById("po-modal-busca-cliente-feedback");
             const lst = document.getElementById("po-modal-lista-clientes");
@@ -20114,6 +20277,11 @@
         }
 
         async function agModalBuscarCliente() {
+            if (!cadPodeBuscarClientes()) {
+                const fb0 = document.getElementById("ag-modal-busca-feedback");
+                if (fb0) fb0.textContent = "Sem permissão para buscar clientes.";
+                return;
+            }
             const campo = document.getElementById("ag-modal-busca-cliente");
             const fb = document.getElementById("ag-modal-busca-feedback");
             const lst = document.getElementById("ag-modal-lista-clientes");

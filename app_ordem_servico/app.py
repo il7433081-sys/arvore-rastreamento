@@ -2538,7 +2538,6 @@ def _usuario_pode_atribuir_mecanico(usuario: dict[str, Any] | None) -> bool:
         "agendamentos_",
         "pre_orcamentos_",
         "ordem_os_",
-        "cadastros_",
     )
     return any(
         bool(ativo) and any(chave.startswith(p) for p in prefixes)
@@ -2639,11 +2638,152 @@ def _negar_sem_permissao_atualizar_precos_pre(
     return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
 
 
+def _usuario_pode_ver_cadastros_clientes(usuario: dict[str, Any] | None) -> bool:
+    if _usuario_e_mecanico(usuario):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return _usuario_tem_permissao(usuario, "cadastros_clientes_visualizar")
+
+
+def _usuario_pode_criar_cadastros_clientes(usuario: dict[str, Any] | None) -> bool:
+    if _usuario_e_mecanico(usuario):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return _usuario_tem_permissao(usuario, "cadastros_clientes_criar")
+
+
+def _usuario_pode_editar_cadastros_clientes(usuario: dict[str, Any] | None) -> bool:
+    if _usuario_e_mecanico(usuario):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return _usuario_tem_permissao(usuario, "cadastros_clientes_editar")
+
+
+def _usuario_pode_buscar_clientes_contexto(usuario: dict[str, Any] | None) -> bool:
+    if _usuario_pode_ver_cadastros_clientes(usuario):
+        return True
+    if usuario is None:
+        return not _exigir_login_efetivo()
+    if not _usuario_acesso_restrito(usuario):
+        return True
+    if _usuario_e_mecanico(usuario):
+        return False
+    gran = _permissoes_efetivas_usuario(usuario)
+    return bool(
+        gran.get("ordem_os_geral_visualizar")
+        or gran.get("ordem_os_geral_criar")
+        or gran.get("ordem_os_geral_editar")
+        or gran.get("agendamentos_geral_visualizar")
+        or gran.get("agendamentos_geral_criar")
+        or gran.get("agendamentos_geral_editar")
+        or _usuario_pode_buscar_catalogo_pre_orcamentos(usuario)
+    )
+
+
+def _usuario_pode_ver_cadastros_motores(usuario: dict[str, Any] | None) -> bool:
+    if _usuario_e_mecanico(usuario):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return _usuario_tem_permissao(usuario, "cadastros_motores_visualizar")
+
+
+def _usuario_pode_criar_cadastros_motores(usuario: dict[str, Any] | None) -> bool:
+    if _usuario_e_mecanico(usuario):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return _usuario_tem_permissao(usuario, "cadastros_motores_criar")
+
+
+def _usuario_pode_editar_cadastros_motores(usuario: dict[str, Any] | None) -> bool:
+    if _usuario_e_mecanico(usuario):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return _usuario_tem_permissao(usuario, "cadastros_motores_editar")
+
+
+def _usuario_pode_buscar_motores_contexto(usuario: dict[str, Any] | None) -> bool:
+    return (
+        _usuario_pode_ver_cadastros_motores(usuario)
+        or _usuario_pode_buscar_clientes_contexto(usuario)
+    )
+
+
+def _usuario_pode_ver_cadastros_pecas(usuario: dict[str, Any] | None) -> bool:
+    if _usuario_e_mecanico(usuario):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return _usuario_tem_permissao(usuario, "cadastros_pecas_visualizar")
+
+
+def _usuario_pode_criar_cadastros_pecas(usuario: dict[str, Any] | None) -> bool:
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return _usuario_tem_permissao(usuario, "cadastros_pecas_criar")
+
+
+def _usuario_pode_editar_cadastros_pecas(usuario: dict[str, Any] | None) -> bool:
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return _usuario_tem_permissao(usuario, "cadastros_pecas_editar")
+
+
+def _usuario_pode_ver_cadastros_servicos(usuario: dict[str, Any] | None) -> bool:
+    if _usuario_e_mecanico(usuario):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return _usuario_tem_permissao(usuario, "cadastros_servicos_visualizar")
+
+
+def _usuario_pode_criar_cadastros_servicos(usuario: dict[str, Any] | None) -> bool:
+    if _usuario_e_mecanico(usuario):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return _usuario_tem_permissao(usuario, "cadastros_servicos_criar")
+
+
+def _usuario_pode_editar_cadastros_servicos(usuario: dict[str, Any] | None) -> bool:
+    if _usuario_e_mecanico(usuario):
+        return False
+    if not usuario or not _usuario_acesso_restrito(usuario):
+        return True
+    return _usuario_tem_permissao(usuario, "cadastros_servicos_editar")
+
+
+def _negar_sem_permissao_cadastros_clientes_busca(
+    usuario: dict[str, Any] | None,
+) -> tuple[Any, int] | None:
+    if not usuario:
+        return jsonify({"sucesso": False, "mensagem": "Faça login."}), 401
+    if _usuario_pode_buscar_clientes_contexto(usuario):
+        return None
+    return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+
+
+def _negar_sem_permissao_cadastros_motores_busca(
+    usuario: dict[str, Any] | None,
+) -> tuple[Any, int] | None:
+    if not usuario:
+        return jsonify({"sucesso": False, "mensagem": "Faça login."}), 401
+    if _usuario_pode_buscar_motores_contexto(usuario):
+        return None
+    return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+
+
 def _usuario_pode_usar_catalogo_pecas(usuario: dict[str, Any] | None) -> bool:
     if usuario is None:
         return not _exigir_login_efetivo()
     return (
-        (_usuario_e_mecanico(usuario) and (
+        _usuario_pode_ver_cadastros_pecas(usuario)
+        or (_usuario_e_mecanico(usuario) and (
             _usuario_pode_criar_requisicoes_os(usuario)
             or _usuario_pode_editar_requisicoes_os(usuario)
         ))
@@ -2653,12 +2793,17 @@ def _usuario_pode_usar_catalogo_pecas(usuario: dict[str, Any] | None) -> bool:
         or _usuario_pode_criar_requisicoes_interna(usuario)
         or _usuario_pode_editar_requisicoes_interna(usuario)
         or _usuario_pode_buscar_catalogo_pre_orcamentos(usuario)
+        or _usuario_pode_ver_estoque(usuario)
+        or _usuario_pode_movimentar_estoque(usuario)
     )
 
 
 def _usuario_pode_usar_catalogo_servicos(usuario: dict[str, Any] | None) -> bool:
+    if usuario is None:
+        return not _exigir_login_efetivo()
     return (
-        _usuario_pode_criar_requisicoes_os(usuario)
+        _usuario_pode_ver_cadastros_servicos(usuario)
+        or _usuario_pode_criar_requisicoes_os(usuario)
         or _usuario_pode_editar_requisicoes_os(usuario)
         or _usuario_pode_responder_requisicoes_os(usuario)
         or _usuario_pode_criar_requisicoes_interna(usuario)
@@ -6705,20 +6850,29 @@ def api_pecas_buscar():
 @app.route("/api/pecas", methods=["POST"])
 def api_pecas_cadastrar():
     usuario = _usuario_logado()
+    if not usuario:
+        return jsonify({"sucesso": False, "mensagem": "Faça login."}), 401
     via_req = (
         _usuario_pode_editar_requisicoes_os(usuario)
         or _usuario_pode_editar_requisicoes_interna(usuario)
         or _usuario_pode_responder_requisicoes_os(usuario)
+        or _usuario_pode_criar_requisicoes_os(usuario)
+        or _usuario_pode_criar_requisicoes_interna(usuario)
     )
-    via_estoque = _usuario_pode_cadastrar_peca_via_estoque(usuario)
-    if not via_req and not via_estoque:
+    via_estoque_mov = _usuario_pode_movimentar_estoque(usuario)
+    via_cadastros = _usuario_pode_criar_cadastros_pecas(usuario)
+    if not via_req and not via_estoque_mov and not via_cadastros:
         return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
     if via_req:
         negado = _negar_sem_permissao(usuario, "cadastros_pecas_criar")
         if negado:
             return negado
-    else:
+    elif via_estoque_mov:
         negado = _negar_sem_permissao_estoque_movimentar(usuario)
+        if negado:
+            return negado
+    else:
+        negado = _negar_sem_permissao(usuario, "cadastros_pecas_criar")
         if negado:
             return negado
     if not DATABASE_PRINCIPAL_PATH.is_file():
@@ -6758,10 +6912,17 @@ def api_pecas_cadastrar():
             peca = obter_peca_estoque(conn, novo_id) or obter_peca_catalogo(
                 conn, novo_id, incluir_preco=True
             )
-        if via_estoque and not via_req:
+        if via_estoque_mov and not via_req:
             _registrar_acao_rastreio(
                 usuario,
                 "Estoque",
+                "Nova peça",
+                descricao or f"Peça #{novo_id}",
+            )
+        elif via_req or via_cadastros:
+            _registrar_acao_rastreio(
+                usuario,
+                "Cadastros",
                 "Nova peça",
                 descricao or f"Peça #{novo_id}",
             )
@@ -6779,20 +6940,27 @@ def api_pecas_cadastrar():
 @app.route("/api/pecas/<int:catalogo_id>", methods=["PUT"])
 def api_pecas_atualizar(catalogo_id: int):
     usuario = _usuario_logado()
+    if not usuario:
+        return jsonify({"sucesso": False, "mensagem": "Faça login."}), 401
     via_req = (
         _usuario_pode_editar_requisicoes_os(usuario)
         or _usuario_pode_editar_requisicoes_interna(usuario)
         or _usuario_pode_responder_requisicoes_os(usuario)
     )
-    via_estoque = _usuario_pode_editar_peca_via_estoque(usuario)
-    if not via_req and not via_estoque:
+    via_estoque_mov = _usuario_pode_movimentar_estoque(usuario)
+    via_cadastros = _usuario_pode_editar_cadastros_pecas(usuario)
+    if not via_req and not via_estoque_mov and not via_cadastros:
         return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
     if via_req:
         negado = _negar_sem_permissao(usuario, "cadastros_pecas_editar")
         if negado:
             return negado
-    else:
+    elif via_estoque_mov:
         negado = _negar_sem_permissao_estoque_movimentar(usuario)
+        if negado:
+            return negado
+    else:
+        negado = _negar_sem_permissao(usuario, "cadastros_pecas_editar")
         if negado:
             return negado
     if not DATABASE_PRINCIPAL_PATH.is_file():
@@ -6823,10 +6991,17 @@ def api_pecas_atualizar(catalogo_id: int):
             peca = obter_peca_estoque(conn, catalogo_id) or obter_peca_catalogo(
                 conn, catalogo_id, incluir_preco=True
             )
-        if via_estoque and not via_req:
+        if via_estoque_mov and not via_req:
             _registrar_acao_rastreio(
                 usuario,
                 "Estoque",
+                "Editar peça",
+                descricao or f"Peça #{catalogo_id}",
+            )
+        elif via_req or via_cadastros:
+            _registrar_acao_rastreio(
+                usuario,
+                "Cadastros",
                 "Editar peça",
                 descricao or f"Peça #{catalogo_id}",
             )
@@ -6862,8 +7037,21 @@ def api_servicos_buscar():
 @app.route("/api/servicos", methods=["POST"])
 def api_servicos_cadastrar():
     usuario = _usuario_logado()
-    if not _usuario_pode_usar_catalogo_servicos(usuario):
+    if not usuario:
+        return jsonify({"sucesso": False, "mensagem": "Faça login."}), 401
+    via_req = (
+        _usuario_pode_editar_requisicoes_os(usuario)
+        or _usuario_pode_editar_requisicoes_interna(usuario)
+        or _usuario_pode_responder_requisicoes_os(usuario)
+        or _usuario_pode_criar_requisicoes_os(usuario)
+        or _usuario_pode_criar_requisicoes_interna(usuario)
+    )
+    via_cadastros = _usuario_pode_criar_cadastros_servicos(usuario)
+    if not via_req and not via_cadastros:
         return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_permissao(usuario, "cadastros_servicos_criar")
+    if negado:
+        return negado
     if not DATABASE_PRINCIPAL_PATH.is_file():
         return jsonify({"sucesso": False, "mensagem": "Banco de dados não encontrado."}), 500
     payload = request.get_json(silent=True) or {}
@@ -6882,6 +7070,12 @@ def api_servicos_cadastrar():
                 gera_comissao=gera_comissao,
             )
             servico = obter_servico_catalogo(conn, novo_id, incluir_preco=True)
+        _registrar_acao_rastreio(
+            usuario,
+            "Cadastros",
+            "Novo serviço",
+            descricao or f"Serviço #{novo_id}",
+        )
         return jsonify({
             "sucesso": True,
             "mensagem": "Serviço cadastrado no catálogo da oficina.",
@@ -6896,8 +7090,19 @@ def api_servicos_cadastrar():
 @app.route("/api/servicos/<int:catalogo_id>", methods=["PUT"])
 def api_servicos_atualizar(catalogo_id: int):
     usuario = _usuario_logado()
-    if not _usuario_pode_usar_catalogo_servicos(usuario):
+    if not usuario:
+        return jsonify({"sucesso": False, "mensagem": "Faça login."}), 401
+    via_req = (
+        _usuario_pode_editar_requisicoes_os(usuario)
+        or _usuario_pode_editar_requisicoes_interna(usuario)
+        or _usuario_pode_responder_requisicoes_os(usuario)
+    )
+    via_cadastros = _usuario_pode_editar_cadastros_servicos(usuario)
+    if not via_req and not via_cadastros:
         return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    negado = _negar_sem_permissao(usuario, "cadastros_servicos_editar")
+    if negado:
+        return negado
     if not DATABASE_PRINCIPAL_PATH.is_file():
         return jsonify({"sucesso": False, "mensagem": "Banco de dados não encontrado."}), 500
     payload = request.get_json(silent=True) or {}
@@ -6917,6 +7122,12 @@ def api_servicos_atualizar(catalogo_id: int):
                 gera_comissao=gera_comissao,
             )
             servico = obter_servico_catalogo(conn, catalogo_id, incluir_preco=True)
+        _registrar_acao_rastreio(
+            usuario,
+            "Cadastros",
+            "Editar serviço",
+            descricao or f"Serviço #{catalogo_id}",
+        )
         return jsonify({
             "sucesso": True,
             "mensagem": "Cadastro de serviços da oficina atualizado.",
@@ -9660,6 +9871,11 @@ def pdf_pre_orcamento(pre_id: int):
 
 @app.route("/buscar_cliente")
 def buscar_cliente():
+    usuario = _usuario_logado()
+    negado = _negar_sem_permissao_cadastros_clientes_busca(usuario)
+    if negado:
+        _, code = negado
+        return jsonify({"encontrado": False, "mensagem": "Acesso negado."}), code
     termo = request.args.get("termo", request.args.get("q", "")).strip()
     if not termo:
         return jsonify({"encontrado": False, "mensagem": "Informe um nome ou CPF/CNPJ."}), 400
@@ -9693,6 +9909,11 @@ def buscar_cliente():
 
 @app.route("/motores_cliente")
 def motores_cliente():
+    usuario = _usuario_logado()
+    negado = _negar_sem_permissao_cadastros_motores_busca(usuario)
+    if negado:
+        _, code = negado
+        return jsonify({"encontrado": False, "mensagem": "Acesso negado."}), code
     cliente_id = request.args.get("cliente_id", "").strip()
     if not cliente_id.isdigit():
         return jsonify({"encontrado": False, "mensagem": "Informe um cliente válido."}), 400
@@ -9727,6 +9948,10 @@ def motores_cliente():
 
 @app.route("/salvar_cliente", methods=["POST"])
 def salvar_cliente():
+    usuario = _usuario_logado()
+    if not usuario:
+        return jsonify({"sucesso": False, "mensagem": "Faça login."}), 401
+
     if not DATABASE_PATH.is_file():
         return jsonify({"sucesso": False, "mensagem": "Banco de dados não encontrado."}), 500
 
@@ -9746,6 +9971,12 @@ def salvar_cliente():
             cliente_id = int(cliente_id)
         except (TypeError, ValueError):
             cliente_id = None
+
+    if cliente_id:
+        if not _usuario_pode_editar_cadastros_clientes(usuario):
+            return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    elif not _usuario_pode_criar_cadastros_clientes(usuario):
+        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
 
     try:
         with conexao_principal() as conn:
@@ -9806,6 +10037,13 @@ def salvar_cliente():
     except sqlite3.Error as exc:
         return jsonify({"sucesso": False, "mensagem": f"Erro ao salvar cliente: {exc}"}), 500
 
+    _registrar_acao_rastreio(
+        usuario,
+        "Cadastros",
+        "Editar cliente" if acao == "atualizado" else "Criar cliente",
+        dados["nome"] or f"Cliente #{novo_id}",
+    )
+
     return jsonify({
         "sucesso": True,
         "mensagem": f"Cliente {acao} com sucesso (ID {novo_id}).",
@@ -9815,6 +10053,10 @@ def salvar_cliente():
 
 @app.route("/salvar_motor", methods=["POST"])
 def salvar_motor():
+    usuario = _usuario_logado()
+    if not usuario:
+        return jsonify({"sucesso": False, "mensagem": "Faça login."}), 401
+
     if not DATABASE_PATH.is_file():
         return jsonify({"sucesso": False, "mensagem": "Banco de dados não encontrado."}), 500
 
@@ -9844,6 +10086,12 @@ def salvar_motor():
             motor_id = int(motor_id)
         except (TypeError, ValueError):
             motor_id = None
+
+    if motor_id:
+        if not _usuario_pode_editar_cadastros_motores(usuario):
+            return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
+    elif not _usuario_pode_criar_cadastros_motores(usuario):
+        return jsonify({"sucesso": False, "mensagem": "Acesso negado."}), 403
 
     try:
         with conexao_principal() as conn:
@@ -9895,6 +10143,14 @@ def salvar_motor():
         }), 409
     except sqlite3.Error as exc:
         return jsonify({"sucesso": False, "mensagem": f"Erro ao salvar motor: {exc}"}), 500
+
+    rotulo_motor = marca_modelo or chassi or f"Motor #{novo_id}"
+    _registrar_acao_rastreio(
+        usuario,
+        "Cadastros",
+        "Editar motor" if acao == "atualizado" else "Criar motor",
+        rotulo_motor,
+    )
 
     return jsonify({
         "sucesso": True,
